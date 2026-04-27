@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# nested dependencies and environment
 **/node_modules
 **/.next
 **/.env
+backend/node_modules
+backend/.env
