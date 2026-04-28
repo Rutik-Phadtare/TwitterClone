@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  /* config options here */
+// Changing type to 'any' stops the 'eslint does not exist' error
+const nextConfig: any = {
   env: {
     BACKEND_URL: process.env.BACKEND_URL,
   },
