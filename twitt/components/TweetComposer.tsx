@@ -40,21 +40,40 @@ const TweetComposer = ({ onTweetPosted }: any) => {
   if (!user) return null;
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setIsLoading(true);
     const image = e.target.files[0];
+    
+    // Validate image file
+    if (!image.type.startsWith('image/')) {
+      alert('Please select a valid image file (JPG, PNG, GIF, etc.).');
+      return;
+    }
+    
+    // Check file size (imgbb limit is 32MB)
+    const maxSize = 32 * 1024 * 1024; // 32MB
+    if (image.size > maxSize) {
+      alert('Image file is too large. Maximum size is 32MB.');
+      return;
+    }
+    
+    setIsLoading(true);
+    
     const formdataimg = new FormData();
     formdataimg.set("image", image);
     try {
       const res = await axios.post(
-        "https://api.imgbb.com/1/upload?key=97f3fb960c3520d6a88d7e29679cf96f",
+        "https://api.imgbb.com/1/upload?key=118c68781cad7502f590ce9fc6ae87ab",
         formdataimg
       );
       const url = res.data.data.display_url;
       if (url) {
         setimageurl(url);
       }
-    } catch (error) {
-      console.log(error);
+    } catch (error: any) {
+      console.error('Image upload failed:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+      }
+      alert('Failed to upload image. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -76,6 +95,15 @@ const TweetComposer = ({ onTweetPosted }: any) => {
                 onChange={(e) => setContent(e.target.value)}
                 className="bg-transparent border-none text-xl text-white placeholder-gray-500 resize-none min-h-[120px] focus-visible:ring-0 focus-visible:ring-offset-0"
               />
+
+              {imageurl && (
+                <div className="mt-4">
+                  <img src={imageurl} alt="Preview" className="max-w-full h-auto rounded-lg" />
+                  <Button onClick={() => setimageurl("")} variant="ghost" size="sm" className="mt-2 text-red-500">
+                    Remove
+                  </Button>
+                </div>
+              )}
 
               <div className="flex items-center justify-between mt-4">
                 <div className="flex items-center space-x-4 text-blue-400">

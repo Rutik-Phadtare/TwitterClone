@@ -31,7 +31,7 @@ interface AuthContextType {
     email: string,
     password: string,
     username: string,
-    displayName: string,
+    displayName: string
   ) => Promise<void>;
   updateProfile: (profileData: {
     displayName: string;
@@ -113,22 +113,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     email: string,
     password: string,
     username: string,
-    displayName: string,
+    displayName: string
   ) => {
     setIsLoading(true);
     // Mock authentication - in real app, this would call an API
     const usercred = await createUserWithEmailAndPassword(
       auth,
       email,
-      password,
+      password
     );
     const user = usercred.user;
     const newuser: any = {
       username,
       displayName,
-      avatar:
-        user.photoURL ||
-        "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400",
+      avatar: user.photoURL || "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400",
       email: user.email,
     };
     const res = await axiosInstance.post("/register", newuser);
@@ -172,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     const res = await axiosInstance.patch(
       `/userupdate/${user.email}`,
-      updatedUser,
+      updatedUser
     );
     if (res.data) {
       setUser(updatedUser);
@@ -201,12 +199,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         });
         userData = res.data;
       } catch (err: any) {
+        if (err.response?.status !== 404) {
+          console.error("Google Sign-In user fetch error:", err);
+        }
+      }
+
+      if (!userData) {
         const newuser: any = {
           username: firebaseuser.email.split("@")[0],
           displayName: firebaseuser.displayName || "User",
-          avatar:
-            firebaseuser.photoURL ||
-            "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400",
+          avatar: firebaseuser.photoURL || "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400",
           email: firebaseuser.email,
         };
 
