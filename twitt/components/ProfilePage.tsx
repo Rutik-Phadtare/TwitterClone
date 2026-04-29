@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -8,7 +8,6 @@ import {
   Link as LinkIcon,
   MoreHorizontal,
   Camera,
-  Settings,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "./ui/button";
@@ -19,93 +18,164 @@ import { Card, CardContent } from "./ui/card";
 import Editprofile from "./Editprofile";
 import axiosInstance from "@/lib/axiosInstance";
 
-interface Tweet {
-  id: string;
-  author: {
-    id: string;
-    username: string;
-    displayName: string;
-    avatar: string;
-    verified?: boolean;
-  };
-  content: string;
-  timestamp: string;
-  likes: number;
-  retweets: number;
-  comments: number;
-  liked?: boolean;
-  retweeted?: boolean;
-  image?: string;
+// ─── Inject styles once ───────────────────────────────────────────────────────
+const STYLE_ID = "profile-page-styles";
+if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
+  const s = document.createElement("style");
+  s.id = STYLE_ID;
+  s.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+    .pp-root * { box-sizing: border-box; }
+
+    @keyframes pp-fadeUp {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes pp-fadeIn {
+      from { opacity:0; }
+      to   { opacity:1; }
+    }
+    @keyframes pp-shimmer {
+      0%   { background-position:-700px 0; }
+      100% { background-position: 700px 0; }
+    }
+    @keyframes pp-scaleIn {
+      from { opacity:0; transform:scale(0.94); }
+      to   { opacity:1; transform:scale(1); }
+    }
+    @keyframes pp-bannerReveal {
+      from { opacity:0; transform:scaleY(0.93); transform-origin:top; }
+      to   { opacity:1; transform:scaleY(1); }
+    }
+
+    .pp-banner        { animation: pp-bannerReveal 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-avatar-ring   { animation: pp-scaleIn 0.4s 0.15s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-info          { animation: pp-fadeUp  0.4s 0.22s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-meta          { animation: pp-fadeUp  0.4s 0.3s  cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-tabs-wrap     { animation: pp-fadeUp  0.4s 0.36s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-tweet-item    { animation: pp-fadeUp  0.35s cubic-bezier(0.22,1,0.36,1) both; }
+
+    .pp-shimmer {
+      background: linear-gradient(90deg,
+        rgba(255,255,255,0.04) 25%,
+        rgba(255,255,255,0.09) 50%,
+        rgba(255,255,255,0.04) 75%
+      );
+      background-size: 700px 100%;
+      animation: pp-shimmer 1.6s infinite linear;
+      border-radius: 6px;
+    }
+
+    /* Tab active indicator */
+    .pp-tab[data-state="active"] {
+      color: #fff !important;
+      font-weight: 700;
+    }
+    .pp-tab[data-state="active"]::after {
+      content:'';
+      position:absolute; bottom:0; left:50%;
+      transform:translateX(-50%);
+      width:44px; height:3px;
+      background:#1d9bf0;
+      border-radius:3px 3px 0 0;
+    }
+    .pp-tab {
+      position:relative;
+      transition: color 0.18s ease;
+    }
+
+    /* Camera overlay */
+    .pp-cam-overlay {
+      opacity:0; transition:opacity 0.2s ease;
+    }
+    .pp-cam-trigger:hover .pp-cam-overlay { opacity:1; }
+
+    /* Edit button */
+    .pp-edit-btn {
+      transition: background 0.18s ease, transform 0.15s ease;
+    }
+    .pp-edit-btn:hover {
+      background: rgba(255,255,255,0.1) !important;
+      transform: scale(1.02);
+    }
+    .pp-edit-btn:active { transform: scale(0.97); }
+
+    /* Meta link hover */
+    .pp-meta-link {
+      transition: color 0.15s ease;
+    }
+    .pp-meta-link:hover { color: #1d9bf0 !important; }
+
+    /* Tweet row hover */
+    .pp-tweet-row {
+      transition: background 0.16s ease;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .pp-tweet-row:hover { background: rgba(255,255,255,0.018); }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .pp-banner-h  { height: 130px !important; }
+      .pp-avatar-sz { width: 82px !important; height: 82px !important; }
+      .pp-avatar-offset { bottom: -41px !important; }
+      .pp-avatar-spacer { margin-top: 52px !important; }
+      .pp-displayname { font-size: 20px !important; }
+      .pp-meta-row { flex-wrap: wrap; gap: 8px !important; }
+      .pp-tab-label { font-size: 12px !important; }
+      .pp-header-name { font-size: 16px !important; }
+    }
+  `;
+  document.head.appendChild(s);
 }
-const tweets: Tweet[] = [
-  {
-    id: "1",
-    author: {
-      id: "1",
-      username: "elonmusk",
-      displayName: "Elon Musk",
-      avatar:
-        "https://images.pexels.com/photos/2379005/pexels-photo-2379005.jpeg?auto=compress&cs=tinysrgb&w=400",
-      verified: true,
-    },
-    content:
-      "Just had an amazing conversation about the future of AI. The possibilities are endless!",
-    timestamp: "2h",
-    likes: 1247,
-    retweets: 324,
-    comments: 89,
-    liked: false,
-    retweeted: false,
-  },
-  {
-    id: "2",
-    author: {
-      id: "1",
-      username: "sarahtech",
-      displayName: "Sarah Johnson",
-      avatar:
-        "https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=400",
-      verified: false,
-    },
-    content:
-      "Working on some exciting new features for our app. Can't wait to share what we've been building! 🚀",
-    timestamp: "4h",
-    likes: 89,
-    retweets: 23,
-    comments: 12,
-    liked: true,
-    retweeted: false,
-  },
-  {
-    id: "3",
-    author: {
-      id: "4",
-      username: "designguru",
-      displayName: "Alex Chen",
-      avatar:
-        "https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=400",
-      verified: true,
-    },
-    content:
-      "The new design system is finally complete! It took 6 months but the results are incredible. Clean, consistent, and accessible.",
-    timestamp: "6h",
-    likes: 456,
-    retweets: 78,
-    comments: 34,
-    liked: false,
-    retweeted: true,
-    image:
-      "https://images.pexels.com/photos/196645/pexels-photo-196645.jpeg?auto=compress&cs=tinysrgb&w=800",
-  },
-];
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+const SkeletonTweet = ({ delay = 0 }: { delay?: number }) => (
+  <div
+    style={{
+      display: "flex", gap: 12, padding: "16px 20px",
+      borderBottom: "1px solid rgba(255,255,255,0.06)",
+      animation: `pp-fadeUp 0.38s ${delay}s cubic-bezier(0.22,1,0.36,1) both`,
+    }}
+  >
+    <div className="pp-shimmer" style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0 }} />
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div className="pp-shimmer" style={{ width: 100, height: 12 }} />
+        <div className="pp-shimmer" style={{ width: 65, height: 12, opacity: 0.5 }} />
+      </div>
+      <div className="pp-shimmer" style={{ width: "90%", height: 12 }} />
+      <div className="pp-shimmer" style={{ width: "72%", height: 12 }} />
+    </div>
+  </div>
+);
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) => (
+  <div style={{ padding: "56px 24px", textAlign: "center", animation: "pp-fadeUp 0.4s ease both" }}>
+    <div style={{
+      width: 52, height: 52, borderRadius: "50%",
+      background: "rgba(29,155,240,0.08)",
+      border: "1px solid rgba(29,155,240,0.18)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      margin: "0 auto 16px", fontSize: 22,
+    }}>✦</div>
+    <h3 style={{ color: "#fff", fontFamily: "'DM Sans',sans-serif", fontWeight: 700, fontSize: 18, margin: "0 0 6px" }}>{title}</h3>
+    <p style={{ color: "rgba(255,255,255,0.4)", fontFamily: "'DM Sans',sans-serif", fontSize: 14, margin: 0 }}>{subtitle}</p>
+  </div>
+);
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("posts");
   const [showEditModal, setShowEditModal] = useState(false);
+  const [bannerSrc, setBannerSrc] = useState<string | null>(null);
 
-  if (!user) return null;
-  const [tweets, setTweets] = useState<any>([]);
+  // ── unchanged logic ────────────────────────────────────────────────────────
+  const [tweets, setTweets] = useState<any[]>([]);
   const [loading, setloading] = useState(false);
+
   const fetchTweets = async () => {
     try {
       setloading(true);
@@ -117,232 +187,387 @@ export default function ProfilePage() {
       setloading(false);
     }
   };
+
   useEffect(() => {
     fetchTweets();
   }, []);
-  // Filter tweets by current user
+
+  // Auto-refresh every 30s so updates appear instantly
+  useEffect(() => {
+    const id = setInterval(fetchTweets, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  if (!user) return null;
+
   const userTweets = tweets.filter((tweet: any) => tweet.author._id === user._id);
 
+  // Banner upload handler
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setBannerSrc(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const TABS = [
+    { value: "posts",      label: "Posts" },
+    { value: "replies",    label: "Replies" },
+    { value: "highlights", label: "Highlights" },
+    { value: "articles",   label: "Articles" },
+    { value: "media",      label: "Media" },
+  ];
+
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-gray-800 z-10">
-        <div className="flex items-center px-4 py-3 space-x-8">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-2 rounded-full hover:bg-gray-900"
+    <div
+      className="pp-root"
+      style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif" }}
+    >
+      {/* ── Sticky Header ───────────────────────────────────────────── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 30,
+        background: "rgba(0,0,0,0.82)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+        borderBottom: "1px solid rgba(255,255,255,0.07)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "12px 16px", gap: 20 }}>
+          <button
+            style={{
+              width: 36, height: 36, borderRadius: "50%", border: "none",
+              background: "transparent", color: "#fff", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 0.18s ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+            onClick={() => window.history.back()}
           >
-            <ArrowLeft className="h-5 w-5 text-white" />
-          </Button>
+            <ArrowLeft size={18} />
+          </button>
           <div>
-            <h1 className="text-xl font-bold text-white">{user.displayName}</h1>
-            <p className="text-sm text-gray-400">{userTweets.length} posts</p>
+            <h1
+              className="pp-header-name"
+              style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}
+            >
+              {user.displayName}
+            </h1>
+            <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>
+              {userTweets.length} post{userTweets.length !== 1 ? "s" : ""}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Cover Photo */}
-      <div className="relative">
-        <div className="h-48 bg-gradient-to-r from-blue-600 to-purple-600 relative">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70"
-          >
-            <Camera className="h-5 w-5 text-white" />
-          </Button>
-        </div>
+      {/* ── Banner ──────────────────────────────────────────────────── */}
+      {/* Hidden file input for banner upload */}
+      <input
+        ref={bannerInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleBannerChange}
+      />
 
-        {/* Profile Picture */}
-        <div className="absolute -bottom-16 left-4">
-          <div className="relative">
-            <Avatar className="h-32 w-32 border-4 border-black">
-              <AvatarImage src={user.avatar} alt={user.displayName} />
-              <AvatarFallback className="text-2xl">
-                {user.displayName[0]}
-              </AvatarFallback>
-            </Avatar>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute bottom-2 right-2 p-2 rounded-full bg-black/70 hover:bg-black/90"
-            >
-              <Camera className="h-4 w-4 text-white" />
-            </Button>
+      <div style={{ position: "relative" }}>
+        {/* Banner image */}
+        <div
+          className="pp-banner pp-banner-h pp-cam-trigger"
+          style={{
+            height: 200,
+            background: bannerSrc
+              ? `url(${bannerSrc}) center/cover no-repeat`
+              : "linear-gradient(135deg, #0f1923 0%, #1a2a3a 40%, #0d1b2a 70%, #162032 100%)",
+            position: "relative",
+            overflow: "hidden",
+            cursor: "pointer",
+          }}
+          onClick={() => bannerInputRef.current?.click()}
+        >
+          {/* Subtle overlay grain */}
+          {!bannerSrc && (
+            <div style={{
+              position: "absolute", inset: 0,
+              backgroundImage: "radial-gradient(circle at 30% 50%, rgba(29,155,240,0.12) 0%, transparent 60%), radial-gradient(circle at 80% 20%, rgba(120,80,255,0.08) 0%, transparent 50%)",
+            }} />
+          )}
+          {/* Camera button */}
+          <div
+            className="pp-cam-overlay"
+            style={{
+              position: "absolute", inset: 0,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+              color: "#fff",
+            }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: "50%",
+                background: "rgba(0,0,0,0.6)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1px solid rgba(255,255,255,0.25)",
+              }}>
+                <Camera size={20} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
+                Change banner
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Edit Profile Button */}
-        <div className="flex justify-end p-4">
-          <Button
-            variant="outline"
-            className="border-gray-600 text-white bg-gray-950 font-semibold rounded-full px-6"
+        {/* ── Avatar — fixed position: overlaps bottom of banner ── */}
+        <div
+          className="pp-avatar-ring pp-avatar-offset"
+          style={{
+            position: "absolute",
+            bottom: -50,        // half of avatar height (100px / 2)
+            left: 16,
+            zIndex: 10,
+          }}
+        >
+          <div style={{ position: "relative", display: "inline-block" }}>
+            {/* Glow ring */}
+            <div style={{
+              position: "absolute", inset: -3, borderRadius: "50%",
+              background: "linear-gradient(135deg, rgba(29,155,240,0.6), rgba(120,80,255,0.4))",
+              zIndex: -1,
+            }} />
+            <Avatar
+              className="pp-avatar-sz"
+              style={{
+                width: 100, height: 100,
+                border: "4px solid #000",
+                borderRadius: "50%",
+                display: "block",
+              }}
+            >
+              <AvatarImage src={user.avatar} alt={user.displayName} style={{ objectFit: "cover" }} />
+              <AvatarFallback style={{
+                fontSize: 32, fontWeight: 700,
+                background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
+                color: "#fff",
+              }}>
+                {user.displayName?.[0]}
+              </AvatarFallback>
+            </Avatar>
+            {/* Avatar camera overlay */}
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              background: "rgba(0,0,0,0)", display: "flex",
+              alignItems: "center", justifyContent: "center",
+              cursor: "pointer", transition: "background 0.2s",
+            }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,0,0,0.4)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,0,0,0)")}
+            >
+              <Camera size={16} color="#fff" style={{ opacity: 0, transition: "opacity 0.2s" }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Edit Profile button — top right of banner area */}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px" }}>
+          <button
+            className="pp-edit-btn"
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(255,255,255,0.28)",
+              borderRadius: 9999,
+              color: "#fff",
+              fontFamily: "'DM Sans',sans-serif",
+              fontWeight: 700,
+              fontSize: 14,
+              padding: "7px 18px",
+              cursor: "pointer",
+              letterSpacing: "0.1px",
+            }}
             onClick={() => setShowEditModal(true)}
           >
             Edit profile
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Profile Info */}
-      <div className="px-4 pb-4 mt-12">
-        <div className="flex items-start justify-between mb-3">
+      {/* ── Profile Info ─────────────────────────────────────────────── */}
+      {/* Spacer so content clears the overlapping avatar */}
+      <div className="pp-avatar-spacer" style={{ marginTop: 62 }}>
+        {/* Name + more button */}
+        <div className="pp-info" style={{ padding: "0 16px 2px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1 className="text-2xl font-bold text-white">
+            <h1
+              className="pp-displayname"
+              style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}
+            >
               {user.displayName}
             </h1>
-            <p className="text-gray-400">@{user.username}</p>
+            <p style={{ margin: "2px 0 0", fontSize: 14, color: "rgba(255,255,255,0.42)", fontWeight: 500 }}>
+              @{user.username}
+            </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-2 rounded-full hover:bg-gray-900"
+          <button
+            style={{
+              width: 34, height: 34, borderRadius: "50%", border: "none",
+              background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "background 0.18s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
           >
-            <MoreHorizontal className="h-5 w-5 text-gray-400" />
-          </Button>
+            <MoreHorizontal size={18} />
+          </button>
         </div>
 
+        {/* Bio */}
         {user.bio && (
-          <p className="text-white mb-3 leading-relaxed">{user.bio}</p>
+          <p style={{
+            margin: "10px 16px 0", color: "rgba(255,255,255,0.88)",
+            fontSize: 14, lineHeight: 1.55,
+            animation: "pp-fadeUp 0.4s 0.26s both",
+          }}>
+            {user.bio}
+          </p>
         )}
 
-        <div className="flex items-center space-x-4 text-gray-400 text-sm mb-3">
-          <div className="flex items-center space-x-1">
-            <MapPin className="h-4 w-4" />
-            <span>{user.location ? user.location : "Earth"}</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <LinkIcon className="h-4 w-4" />
-            <span className="text-blue-400">
-              {user.website ? user.website : "example.com"}
-            </span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <Calendar className="h-4 w-4" />
-            <span>
-              Joined{" "}
-              {user.joinedDate &&
-                new Date(user.joinedDate).toLocaleDateString("en-us", {
-                  month: "long",
-                  year: "numeric",
-                })}
-            </span>
-          </div>
+        {/* Meta row */}
+        <div
+          className="pp-meta pp-meta-row"
+          style={{
+            display: "flex", alignItems: "center", gap: 16,
+            padding: "10px 16px 14px", flexWrap: "wrap",
+          }}
+        >
+          {[
+            {
+              icon: <MapPin size={14} />,
+              text: user.location || "Earth",
+              color: "rgba(255,255,255,0.45)",
+            },
+            {
+              icon: <LinkIcon size={14} />,
+              text: user.website || "example.com",
+              color: "#1d9bf0",
+              cls: "pp-meta-link",
+            },
+            {
+              icon: <Calendar size={14} />,
+              text: `Joined ${user.joinedDate
+                ? new Date(user.joinedDate).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                : ""}`,
+              color: "rgba(255,255,255,0.45)",
+            },
+          ].map((m, i) => (
+            <div
+              key={i}
+              className={m.cls}
+              style={{ display: "flex", alignItems: "center", gap: 5, color: m.color, fontSize: 13 }}
+            >
+              <span style={{ opacity: 0.7 }}>{m.icon}</span>
+              <span>{m.text}</span>
+            </div>
+          ))}
         </div>
+
+        {/* Subtle separator */}
+        <div style={{
+          height: 1,
+          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0.07) 70%, transparent)",
+        }} />
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-transparent border-b border-gray-800 rounded-none h-auto">
-          <TabsTrigger
-            value="posts"
-            className="data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-blue-500 data-[state=active]:rounded-none text-gray-400 hover:bg-gray-900/50 py-4 font-semibold"
+      {/* ── Tabs ─────────────────────────────────────────────────────── */}
+      <div className="pp-tabs-wrap">
+        <Tabs value={activeTab} onValueChange={setActiveTab} style={{ width: "100%" }}>
+          <TabsList
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${TABS.length}, 1fr)`,
+              background: "transparent",
+              borderRadius: 0, height: "auto", padding: 0,
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
-            Posts
-          </TabsTrigger>
-          <TabsTrigger
-            value="replies"
-            className="data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-blue-500 data-[state=active]:rounded-none text-gray-400 hover:bg-gray-900/50 py-4 font-semibold"
-          >
-            Replies
-          </TabsTrigger>
-          <TabsTrigger
-            value="highlights"
-            className="data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-blue-500 data-[state=active]:rounded-none text-gray-400 hover:bg-gray-900/50 py-4 font-semibold"
-          >
-            Highlights
-          </TabsTrigger>
-          <TabsTrigger
-            value="articles"
-            className="data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-blue-500 data-[state=active]:rounded-none text-gray-400 hover:bg-gray-900/50 py-4 font-semibold"
-          >
-            Articles
-          </TabsTrigger>
-          <TabsTrigger
-            value="media"
-            className="data-[state=active]:bg-transparent data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-blue-500 data-[state=active]:rounded-none text-gray-400 hover:bg-gray-900/50 py-4 font-semibold"
-          >
-            Media
-          </TabsTrigger>
-        </TabsList>
+            {TABS.map((t) => (
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="pp-tab pp-tab-label"
+                style={{
+                  background: "transparent", border: "none", borderRadius: 0,
+                  color: activeTab === t.value ? "#fff" : "rgba(255,255,255,0.4)",
+                  fontFamily: "'DM Sans',sans-serif",
+                  fontSize: 13, fontWeight: activeTab === t.value ? 700 : 500,
+                  padding: "14px 4px", cursor: "pointer",
+                  transition: "color 0.18s, background 0.18s",
+                }}
+                onMouseEnter={e => {
+                  if (t.value !== activeTab)
+                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                }}
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        <TabsContent value="posts" className="mt-0">
-          <div className="divide-y divide-gray-800">
-            { loading ? (
-              <Card className="bg-black border-none">
-                <CardContent className="py-12 text-center">
-                  <div className="text-gray-400">
-                    <h3 className="text-2xl font-bold mb-2">
-                      You haven't posted yet
-                    </h3>
-                    <p>When you post, it will show up here.</p>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Posts */}
+          <TabsContent value="posts" style={{ margin: 0 }}>
+            {loading ? (
+              [0, 0.06, 0.12, 0.18].map((d, i) => <SkeletonTweet key={i} delay={d} />)
+            ) : userTweets.length === 0 ? (
+              <EmptyState title="No posts yet" subtitle="When you post, it will show up here." />
             ) : (
-              userTweets.map((tweet:any) => (
-                <TweetCard key={tweet._id} tweet={tweet} />
+              userTweets.map((tweet: any, idx: number) => (
+                <div
+                  key={tweet._id}
+                  className="pp-tweet-item pp-tweet-row"
+                  style={{ animationDelay: `${Math.min(idx * 0.04, 0.3)}s` }}
+                >
+                  <TweetCard tweet={tweet} />
+                </div>
               ))
             )}
-          </div>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent value="replies" className="mt-0">
-          <Card className="bg-black border-none">
-            <CardContent className="py-12 text-center">
-              <div className="text-gray-400">
-                <h3 className="text-2xl font-bold mb-2">
-                  You haven't replied yet
-                </h3>
-                <p>When you reply to a post, it will show up here.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {/* Replies */}
+          <TabsContent value="replies" style={{ margin: 0 }}>
+            <EmptyState title="No replies yet" subtitle="When you reply to a post, it will show up here." />
+          </TabsContent>
 
-        <TabsContent value="highlights" className="mt-0">
-          <Card className="bg-black border-none">
-            <CardContent className="py-12 text-center">
-              <div className="text-gray-400">
-                <h3 className="text-2xl font-bold mb-2">
-                  Lights, camera … attachments!
-                </h3>
-                <p>When you post photos or videos, they will show up here.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {/* Highlights */}
+          <TabsContent value="highlights" style={{ margin: 0 }}>
+            <EmptyState title="Nothing highlighted" subtitle="Highlight posts you want pinned to your profile." />
+          </TabsContent>
 
-        <TabsContent value="articles" className="mt-0">
-          <Card className="bg-black border-none">
-            <CardContent className="py-12 text-center">
-              <div className="text-gray-400">
-                <h3 className="text-2xl font-bold mb-2">
-                  You haven't written any articles
-                </h3>
-                <p>When you write articles, they will show up here.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {/* Articles */}
+          <TabsContent value="articles" style={{ margin: 0 }}>
+            <EmptyState title="No articles yet" subtitle="When you write articles, they will show up here." />
+          </TabsContent>
 
-        <TabsContent value="media" className="mt-0">
-          <Card className="bg-black border-none">
-            <CardContent className="py-12 text-center">
-              <div className="text-gray-400">
-                <h3 className="text-2xl font-bold mb-2">
-                  Lights, camera … attachments!
-                </h3>
-                <p>When you post photos or videos, they will show up here.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          {/* Media */}
+          <TabsContent value="media" style={{ margin: 0 }}>
+            <EmptyState title="No media yet" subtitle="Photos and videos you post will appear here." />
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* ── Edit Profile Modal ───────────────────────────────────────── */}
       <Editprofile
         isopen={showEditModal}
-        onclose={() => setShowEditModal(false)}
+        onclose={() => {
+          setShowEditModal(false);
+          fetchTweets(); // refresh after edit
+        }}
       />
     </div>
   );
