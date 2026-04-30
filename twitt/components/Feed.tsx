@@ -139,11 +139,11 @@ const Feed = () => {
   const tweetsRef = useRef<HTMLDivElement>(null);
 
   // ── unchanged logic ────────────────────────────────────────────────────────
-  const fetchTweets = async () => {
+const fetchTweets = async () => {
     try {
       setloading(true);
       const res = await axiosInstance.get("/post");
-      setTweets(res.data);
+      setTweets(res.data.tweets ?? []); // ← now reads the tweets array
     } catch (error) {
       console.error(error);
     } finally {

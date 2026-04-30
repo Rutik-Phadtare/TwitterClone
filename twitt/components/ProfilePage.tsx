@@ -2,39 +2,28 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  Calendar,
-  MapPin,
-  Link as LinkIcon,
-  MoreHorizontal,
-  Camera,
+  ArrowLeft, Calendar, MapPin,
+  Link as LinkIcon, MoreHorizontal, Camera,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import TweetCard from "./TweetCard";
-import { Card, CardContent } from "./ui/card";
 import Editprofile from "./Editprofile";
 import axiosInstance from "@/lib/axiosInstance";
+import NotificationToggle from "./NotificationToggle";
+// import loginHistory from "@/lib/loginHistory";
 
-// ─── Inject styles once ───────────────────────────────────────────────────────
 const STYLE_ID = "profile-page-styles";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   const s = document.createElement("style");
   s.id = STYLE_ID;
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
-
     .pp-root * { box-sizing: border-box; }
-
     @keyframes pp-fadeUp {
       from { opacity:0; transform:translateY(16px); }
       to   { opacity:1; transform:translateY(0); }
-    }
-    @keyframes pp-fadeIn {
-      from { opacity:0; }
-      to   { opacity:1; }
     }
     @keyframes pp-shimmer {
       0%   { background-position:-700px 0; }
@@ -48,73 +37,40 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       from { opacity:0; transform:scaleY(0.93); transform-origin:top; }
       to   { opacity:1; transform:scaleY(1); }
     }
-
-    .pp-banner        { animation: pp-bannerReveal 0.45s cubic-bezier(0.22,1,0.36,1) both; }
-    .pp-avatar-ring   { animation: pp-scaleIn 0.4s 0.15s cubic-bezier(0.22,1,0.36,1) both; }
-    .pp-info          { animation: pp-fadeUp  0.4s 0.22s cubic-bezier(0.22,1,0.36,1) both; }
-    .pp-meta          { animation: pp-fadeUp  0.4s 0.3s  cubic-bezier(0.22,1,0.36,1) both; }
-    .pp-tabs-wrap     { animation: pp-fadeUp  0.4s 0.36s cubic-bezier(0.22,1,0.36,1) both; }
-    .pp-tweet-item    { animation: pp-fadeUp  0.35s cubic-bezier(0.22,1,0.36,1) both; }
-
+    .pp-banner      { animation: pp-bannerReveal 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-avatar-ring { animation: pp-scaleIn 0.4s 0.15s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-info        { animation: pp-fadeUp 0.4s 0.22s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-meta        { animation: pp-fadeUp 0.4s 0.3s  cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-tabs-wrap   { animation: pp-fadeUp 0.4s 0.36s cubic-bezier(0.22,1,0.36,1) both; }
+    .pp-tweet-item  { animation: pp-fadeUp 0.35s cubic-bezier(0.22,1,0.36,1) both; }
     .pp-shimmer {
       background: linear-gradient(90deg,
-        rgba(255,255,255,0.04) 25%,
-        rgba(255,255,255,0.09) 50%,
-        rgba(255,255,255,0.04) 75%
+        rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 75%
       );
       background-size: 700px 100%;
       animation: pp-shimmer 1.6s infinite linear;
       border-radius: 6px;
     }
-
-    /* Tab active indicator */
-    .pp-tab[data-state="active"] {
-      color: #fff !important;
-      font-weight: 700;
-    }
+    .pp-tab[data-state="active"] { color: #fff !important; font-weight: 700; }
     .pp-tab[data-state="active"]::after {
-      content:'';
-      position:absolute; bottom:0; left:50%;
+      content:''; position:absolute; bottom:0; left:50%;
       transform:translateX(-50%);
       width:44px; height:3px;
-      background:#1d9bf0;
-      border-radius:3px 3px 0 0;
+      background:#1d9bf0; border-radius:3px 3px 0 0;
     }
-    .pp-tab {
-      position:relative;
-      transition: color 0.18s ease;
-    }
-
-    /* Camera overlay */
-    .pp-cam-overlay {
-      opacity:0; transition:opacity 0.2s ease;
-    }
+    .pp-tab { position:relative; transition: color 0.18s ease; }
+    .pp-cam-overlay { opacity:0; transition:opacity 0.2s ease; }
     .pp-cam-trigger:hover .pp-cam-overlay { opacity:1; }
-
-    /* Edit button */
-    .pp-edit-btn {
-      transition: background 0.18s ease, transform 0.15s ease;
-    }
-    .pp-edit-btn:hover {
-      background: rgba(255,255,255,0.1) !important;
-      transform: scale(1.02);
-    }
+    .pp-edit-btn { transition: background 0.18s ease, transform 0.15s ease; }
+    .pp-edit-btn:hover { background: rgba(255,255,255,0.1) !important; transform: scale(1.02); }
     .pp-edit-btn:active { transform: scale(0.97); }
-
-    /* Meta link hover */
-    .pp-meta-link {
-      transition: color 0.15s ease;
-    }
+    .pp-meta-link { transition: color 0.15s ease; }
     .pp-meta-link:hover { color: #1d9bf0 !important; }
-
-    /* Tweet row hover */
     .pp-tweet-row {
       transition: background 0.16s ease;
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .pp-tweet-row:hover { background: rgba(255,255,255,0.018); }
-
-    /* Responsive */
     @media (max-width: 600px) {
       .pp-banner-h  { height: 130px !important; }
       .pp-avatar-sz { width: 82px !important; height: 82px !important; }
@@ -129,15 +85,12 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   document.head.appendChild(s);
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
 const SkeletonTweet = ({ delay = 0 }: { delay?: number }) => (
-  <div
-    style={{
-      display: "flex", gap: 12, padding: "16px 20px",
-      borderBottom: "1px solid rgba(255,255,255,0.06)",
-      animation: `pp-fadeUp 0.38s ${delay}s cubic-bezier(0.22,1,0.36,1) both`,
-    }}
-  >
+  <div style={{
+    display: "flex", gap: 12, padding: "16px 20px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    animation: `pp-fadeUp 0.38s ${delay}s cubic-bezier(0.22,1,0.36,1) both`,
+  }}>
     <div className="pp-shimmer" style={{ width: 42, height: 42, borderRadius: "50%", flexShrink: 0 }} />
     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ display: "flex", gap: 8 }}>
@@ -150,7 +103,6 @@ const SkeletonTweet = ({ delay = 0 }: { delay?: number }) => (
   </div>
 );
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
 const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) => (
   <div style={{ padding: "56px 24px", textAlign: "center", animation: "pp-fadeUp 0.4s ease both" }}>
     <div style={{
@@ -165,26 +117,24 @@ const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) =>
   </div>
 );
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("posts");
   const [showEditModal, setShowEditModal] = useState(false);
   const [bannerSrc, setBannerSrc] = useState<string | null>(null);
-
-  // ── unchanged logic ────────────────────────────────────────────────────────
   const [tweets, setTweets] = useState<any[]>([]);
-  const [loading, setloading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   const fetchTweets = async () => {
     try {
-      setloading(true);
+      setLoading(true);
       const res = await axiosInstance.get("/post");
-      setTweets(res.data);
+      setTweets(res.data.tweets ?? []); // ← FIX: was res.data (an object, not array)
     } catch (error) {
       console.error(error);
     } finally {
-      setloading(false);
+      setLoading(false);
     }
   };
 
@@ -192,19 +142,13 @@ export default function ProfilePage() {
     fetchTweets();
   }, []);
 
-  // Auto-refresh every 30s so updates appear instantly
-  useEffect(() => {
-    const id = setInterval(fetchTweets, 30_000);
-    return () => clearInterval(id);
-  }, []);
-  // ──────────────────────────────────────────────────────────────────────────
-
   if (!user) return null;
 
-  const userTweets = tweets.filter((tweet: any) => tweet.author._id === user._id);
+  // ← FIX: use .toString() — ObjectId objects are never === with plain string comparison
+  const userTweets = tweets.filter(
+    (tweet: any) => tweet.author?._id?.toString() === user._id?.toString()
+  );
 
-  // Banner upload handler
-  const bannerInputRef = useRef<HTMLInputElement>(null);
   const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -213,6 +157,7 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
+<NotificationToggle />
   const TABS = [
     { value: "posts",      label: "Posts" },
     { value: "replies",    label: "Replies" },
@@ -222,11 +167,9 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div
-      className="pp-root"
-      style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif" }}
-    >
-      {/* ── Sticky Header ───────────────────────────────────────────── */}
+    <div className="pp-root" style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif" }}>
+
+      {/* Sticky Header */}
       <div style={{
         position: "sticky", top: 0, zIndex: 30,
         background: "rgba(0,0,0,0.82)",
@@ -249,10 +192,7 @@ export default function ProfilePage() {
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1
-              className="pp-header-name"
-              style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}
-            >
+            <h1 className="pp-header-name" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>
               {user.displayName}
             </h1>
             <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 1 }}>
@@ -262,18 +202,9 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── Banner ──────────────────────────────────────────────────── */}
-      {/* Hidden file input for banner upload */}
-      <input
-        ref={bannerInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={handleBannerChange}
-      />
-
+      {/* Banner */}
+      <input ref={bannerInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleBannerChange} />
       <div style={{ position: "relative" }}>
-        {/* Banner image */}
         <div
           className="pp-banner pp-banner-h pp-cam-trigger"
           style={{
@@ -281,32 +212,21 @@ export default function ProfilePage() {
             background: bannerSrc
               ? `url(${bannerSrc}) center/cover no-repeat`
               : "linear-gradient(135deg, #0f1923 0%, #1a2a3a 40%, #0d1b2a 70%, #162032 100%)",
-            position: "relative",
-            overflow: "hidden",
-            cursor: "pointer",
+            position: "relative", overflow: "hidden", cursor: "pointer",
           }}
           onClick={() => bannerInputRef.current?.click()}
         >
-          {/* Subtle overlay grain */}
           {!bannerSrc && (
             <div style={{
               position: "absolute", inset: 0,
               backgroundImage: "radial-gradient(circle at 30% 50%, rgba(29,155,240,0.12) 0%, transparent 60%), radial-gradient(circle at 80% 20%, rgba(120,80,255,0.08) 0%, transparent 50%)",
             }} />
           )}
-          {/* Camera button */}
-          <div
-            className="pp-cam-overlay"
-            style={{
-              position: "absolute", inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <div style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-              color: "#fff",
-            }}>
+          <div className="pp-cam-overlay" style={{
+            position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: "#fff" }}>
               <div style={{
                 width: 44, height: 44, borderRadius: "50%",
                 background: "rgba(0,0,0,0.6)",
@@ -315,78 +235,36 @@ export default function ProfilePage() {
               }}>
                 <Camera size={20} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
-                Change banner
-              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>Change banner</span>
             </div>
           </div>
         </div>
 
-        {/* ── Avatar — fixed position: overlaps bottom of banner ── */}
-        <div
-          className="pp-avatar-ring pp-avatar-offset"
-          style={{
-            position: "absolute",
-            bottom: -50,        // half of avatar height (100px / 2)
-            left: 16,
-            zIndex: 10,
-          }}
-        >
+        {/* Avatar */}
+        <div className="pp-avatar-ring pp-avatar-offset" style={{ position: "absolute", bottom: -50, left: 16, zIndex: 10 }}>
           <div style={{ position: "relative", display: "inline-block" }}>
-            {/* Glow ring */}
             <div style={{
               position: "absolute", inset: -3, borderRadius: "50%",
               background: "linear-gradient(135deg, rgba(29,155,240,0.6), rgba(120,80,255,0.4))",
               zIndex: -1,
             }} />
-            <Avatar
-              className="pp-avatar-sz"
-              style={{
-                width: 100, height: 100,
-                border: "4px solid #000",
-                borderRadius: "50%",
-                display: "block",
-              }}
-            >
+            <Avatar className="pp-avatar-sz" style={{ width: 100, height: 100, border: "4px solid #000", borderRadius: "50%", display: "block" }}>
               <AvatarImage src={user.avatar} alt={user.displayName} style={{ objectFit: "cover" }} />
-              <AvatarFallback style={{
-                fontSize: 32, fontWeight: 700,
-                background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
-                color: "#fff",
-              }}>
+              <AvatarFallback style={{ fontSize: 32, fontWeight: 700, background: "linear-gradient(135deg,#1d9bf0,#7950ff)", color: "#fff" }}>
                 {user.displayName?.[0]}
               </AvatarFallback>
             </Avatar>
-            {/* Avatar camera overlay */}
-            <div style={{
-              position: "absolute", inset: 0, borderRadius: "50%",
-              background: "rgba(0,0,0,0)", display: "flex",
-              alignItems: "center", justifyContent: "center",
-              cursor: "pointer", transition: "background 0.2s",
-            }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,0,0,0.4)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,0,0,0)")}
-            >
-              <Camera size={16} color="#fff" style={{ opacity: 0, transition: "opacity 0.2s" }} />
-            </div>
           </div>
         </div>
 
-        {/* Edit Profile button — top right of banner area */}
+        {/* Edit button */}
         <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px" }}>
           <button
             className="pp-edit-btn"
             style={{
-              background: "transparent",
-              border: "1px solid rgba(255,255,255,0.28)",
-              borderRadius: 9999,
-              color: "#fff",
-              fontFamily: "'DM Sans',sans-serif",
-              fontWeight: 700,
-              fontSize: 14,
-              padding: "7px 18px",
-              cursor: "pointer",
-              letterSpacing: "0.1px",
+              background: "transparent", border: "1px solid rgba(255,255,255,0.28)",
+              borderRadius: 9999, color: "#fff", fontFamily: "'DM Sans',sans-serif",
+              fontWeight: 700, fontSize: 14, padding: "7px 18px", cursor: "pointer",
             }}
             onClick={() => setShowEditModal(true)}
           >
@@ -395,16 +273,11 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── Profile Info ─────────────────────────────────────────────── */}
-      {/* Spacer so content clears the overlapping avatar */}
+      {/* Profile Info */}
       <div className="pp-avatar-spacer" style={{ marginTop: 62 }}>
-        {/* Name + more button */}
         <div className="pp-info" style={{ padding: "0 16px 2px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1
-              className="pp-displayname"
-              style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}
-            >
+            <h1 className="pp-displayname" style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px" }}>
               {user.displayName}
             </h1>
             <p style={{ margin: "2px 0 0", fontSize: 14, color: "rgba(255,255,255,0.42)", fontWeight: 500 }}>
@@ -425,79 +298,39 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Bio */}
         {user.bio && (
-          <p style={{
-            margin: "10px 16px 0", color: "rgba(255,255,255,0.88)",
-            fontSize: 14, lineHeight: 1.55,
-            animation: "pp-fadeUp 0.4s 0.26s both",
-          }}>
+          <p style={{ margin: "10px 16px 0", color: "rgba(255,255,255,0.88)", fontSize: 14, lineHeight: 1.55, animation: "pp-fadeUp 0.4s 0.26s both" }}>
             {user.bio}
           </p>
         )}
 
-        {/* Meta row */}
-        <div
-          className="pp-meta pp-meta-row"
-          style={{
-            display: "flex", alignItems: "center", gap: 16,
-            padding: "10px 16px 14px", flexWrap: "wrap",
-          }}
-        >
+        <div className="pp-meta pp-meta-row" style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 16px 14px", flexWrap: "wrap" }}>
           {[
-            {
-              icon: <MapPin size={14} />,
-              text: user.location || "Earth",
-              color: "rgba(255,255,255,0.45)",
-            },
-            {
-              icon: <LinkIcon size={14} />,
-              text: user.website || "example.com",
-              color: "#1d9bf0",
-              cls: "pp-meta-link",
-            },
-            {
-              icon: <Calendar size={14} />,
-              text: `Joined ${user.joinedDate
-                ? new Date(user.joinedDate).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-                : ""}`,
-              color: "rgba(255,255,255,0.45)",
-            },
+            { icon: <MapPin size={14} />,    text: user.location || "Earth",       color: "rgba(255,255,255,0.45)" },
+            { icon: <LinkIcon size={14} />,  text: user.website || "example.com",  color: "#1d9bf0", cls: "pp-meta-link" },
+            { icon: <Calendar size={14} />,  text: `Joined ${user.joinedDate ? new Date(user.joinedDate).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : ""}`, color: "rgba(255,255,255,0.45)" },
           ].map((m, i) => (
-            <div
-              key={i}
-              className={m.cls}
-              style={{ display: "flex", alignItems: "center", gap: 5, color: m.color, fontSize: 13 }}
-            >
+            <div key={i} className={m.cls} style={{ display: "flex", alignItems: "center", gap: 5, color: m.color, fontSize: 13 }}>
               <span style={{ opacity: 0.7 }}>{m.icon}</span>
               <span>{m.text}</span>
             </div>
           ))}
         </div>
 
-        {/* Subtle separator */}
-        <div style={{
-          height: 1,
-          background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0.07) 70%, transparent)",
-        }} />
+        <div style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.07) 30%, rgba(255,255,255,0.07) 70%, transparent)" }} />
       </div>
 
-      {/* ── Tabs ─────────────────────────────────────────────────────── */}
+      {/* Tabs */}
       <div className="pp-tabs-wrap">
         <Tabs value={activeTab} onValueChange={setActiveTab} style={{ width: "100%" }}>
-          <TabsList
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${TABS.length}, 1fr)`,
-              background: "transparent",
-              borderRadius: 0, height: "auto", padding: 0,
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-            }}
-          >
+          <TabsList style={{
+            display: "grid", gridTemplateColumns: `repeat(${TABS.length}, 1fr)`,
+            background: "transparent", borderRadius: 0, height: "auto", padding: 0,
+            borderBottom: "1px solid rgba(255,255,255,0.07)",
+          }}>
             {TABS.map((t) => (
               <TabsTrigger
-                key={t.value}
-                value={t.value}
+                key={t.value} value={t.value}
                 className="pp-tab pp-tab-label"
                 style={{
                   background: "transparent", border: "none", borderRadius: 0,
@@ -507,20 +340,14 @@ export default function ProfilePage() {
                   padding: "14px 4px", cursor: "pointer",
                   transition: "color 0.18s, background 0.18s",
                 }}
-                onMouseEnter={e => {
-                  if (t.value !== activeTab)
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                }}
+                onMouseEnter={e => { if (t.value !== activeTab) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 {t.label}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {/* Posts */}
           <TabsContent value="posts" style={{ margin: 0 }}>
             {loading ? (
               [0, 0.06, 0.12, 0.18].map((d, i) => <SkeletonTweet key={i} delay={d} />)
@@ -528,46 +355,32 @@ export default function ProfilePage() {
               <EmptyState title="No posts yet" subtitle="When you post, it will show up here." />
             ) : (
               userTweets.map((tweet: any, idx: number) => (
-                <div
-                  key={tweet._id}
-                  className="pp-tweet-item pp-tweet-row"
-                  style={{ animationDelay: `${Math.min(idx * 0.04, 0.3)}s` }}
-                >
+                <div key={tweet._id} className="pp-tweet-item pp-tweet-row" style={{ animationDelay: `${Math.min(idx * 0.04, 0.3)}s` }}>
                   <TweetCard tweet={tweet} />
                 </div>
               ))
             )}
           </TabsContent>
 
-          {/* Replies */}
           <TabsContent value="replies" style={{ margin: 0 }}>
             <EmptyState title="No replies yet" subtitle="When you reply to a post, it will show up here." />
           </TabsContent>
-
-          {/* Highlights */}
           <TabsContent value="highlights" style={{ margin: 0 }}>
             <EmptyState title="Nothing highlighted" subtitle="Highlight posts you want pinned to your profile." />
           </TabsContent>
-
-          {/* Articles */}
           <TabsContent value="articles" style={{ margin: 0 }}>
             <EmptyState title="No articles yet" subtitle="When you write articles, they will show up here." />
           </TabsContent>
-
-          {/* Media */}
           <TabsContent value="media" style={{ margin: 0 }}>
             <EmptyState title="No media yet" subtitle="Photos and videos you post will appear here." />
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* ── Edit Profile Modal ───────────────────────────────────────── */}
+      {/* Edit Modal */}
       <Editprofile
         isopen={showEditModal}
-        onclose={() => {
-          setShowEditModal(false);
-          fetchTweets(); // refresh after edit
-        }}
+        onclose={() => { setShowEditModal(false); fetchTweets(); }}
       />
     </div>
   );
