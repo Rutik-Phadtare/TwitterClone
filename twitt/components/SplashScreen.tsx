@@ -182,7 +182,7 @@ const STYLES = `
   }
   .splash-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #000000, #60c8ff);
+    background: linear-gradient(90deg, #1d9bf0, #60c8ff);
     border-radius: 2px;
     animation: splash-bar-fill 2s ease-out 0.3s both;
     box-shadow: 0 0 8px rgba(29,155,240,0.6);
