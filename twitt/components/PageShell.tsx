@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import SplashScreen from "./SplashScreen";
 
+
 const SHELL_STYLES = `
   @keyframes shell-enter {
     from { opacity: 0; transform: translateY(10px); }
