@@ -55,7 +55,23 @@ const otpStore = new Map();
 // ─── App ──────────────────────────────────────────────────────────────────────
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`));
+    }
+  },
+  credentials: true,
+}));
+
 app.use(express.json({ limit: "10mb" }));
 
 // ─── Health check ─────────────────────────────────────────────────────────────
