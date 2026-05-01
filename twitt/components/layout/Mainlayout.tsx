@@ -5,6 +5,11 @@ import LoadingSpinner from "../loading-spinner";
 import Sidebar from "./Sidebar";
 import RightSidebar from "./Rightsidebar";
 import ProfilePage from "../ProfilePage";
+import ExplorePage from "../pages/ExplorePage";
+import NotificationsPage from "../pages/NotificationsPage";
+import MessagesPage from "../pages/MessagesPage";
+import BookmarksPage from "../pages/BookmarksPage";
+import SubscriptionPage from "../pages/SubscriptionPage";
 
 const Mainlayout = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuth();
@@ -21,10 +26,19 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
     );
   }
 
-  // If user is not logged in → show children (like login/signup pages)
-  if (!user) {
-    return <>{children}</>;
-  }
+  if (!user) return <>{children}</>;
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case "profile":      return <ProfilePage />;
+      case "explore":      return <ExplorePage />;
+      case "notifications":return <NotificationsPage />;
+      case "messages":     return <MessagesPage />;
+      case "bookmarks":    return <BookmarksPage />;
+      case "subscription": return <SubscriptionPage />;
+      default:             return <>{children}</>;  // home → Feed
+    }
+  };
 
   return (
     <div className="min-h-screen bg-black text-white flex justify-center">
@@ -32,10 +46,10 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
         <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       </div>
       <main className="flex-1 max-w-2xl border-x border-gray-800">
-        {currentPage ==="profile" ? <ProfilePage/> :children}
+        {renderPage()}
       </main>
       <div className="hidden lg:block w-80 p-4">
-        <RightSidebar />
+        <RightSidebar onNavigate={setCurrentPage} />
       </div>
     </div>
   );

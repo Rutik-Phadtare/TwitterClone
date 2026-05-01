@@ -99,6 +99,12 @@ const COMPOSER_STYLES = `
   .tc-root { animation: composerIn 0.3s ease both; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .tc-spin { animation: spin 1s linear infinite; }
+  .tc-error {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 10px; padding: 10px 14px; margin-top: 10px;
+    color: #ef4444; font-size: 0.82rem; line-height: 1.4;
+  }
   @media (max-width: 600px) {
     .tc-toolbar-label { display: none; }
     .tc-post-btn { padding: 0 16px; font-size: 0.85rem; }
@@ -107,12 +113,13 @@ const COMPOSER_STYLES = `
 
 const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void }) => {
   const { user } = useAuth();
-  const [content, setContent] = useState("");
+  const [content, setContent]       = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false); // ← renamed: only for tweet post
-  const [isUploading, setIsUploading] = useState(false);   // ← new: only for image upload
-  const [imageurl, setImageurl] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isSubmittingRef             = useRef(false);
+  const [isUploading, setIsUploading]   = useState(false);
+  const [imageurl, setImageurl]     = useState("");
+  const [postError, setPostError]   = useState("");   // ← shows real error inline
+  const textareaRef                 = useRef<HTMLTextAreaElement>(null);
   const maxLength = 280;
 
   useEffect(() => {
@@ -122,37 +129,65 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
     el.style.height = Math.max(90, el.scrollHeight) + "px";
   }, [content]);
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!user || !content.trim()) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPostError("");
+    if (!user || !content.trim()) return;
 
-  if (!user._id) {
-    alert("Your profile isn't fully loaded yet. Please refresh and try again.");
-    return;
-  }
+    // ── FIX: guard handles both undefined _id and missing user ───────────────
+    if (!user._id) {
+      setPostError("Profile not fully loaded yet — please refresh the page.");
+      return;
+    }
 
-  // Ref blocks duplicate calls synchronously — state alone is too slow
-  if (isSubmittingRef.current) return;
-  isSubmittingRef.current = true;
-  setIsSubmitting(true);
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
-  try {
-    const tweetdata = {
-      author: user._id,
-      content: content.trim(),
-      image: imageurl || null,
-    };
-    const res = await axiosInstance.post("/post", tweetdata);
-    onTweetPosted(res.data);
-    setContent("");
-    setImageurl("");
-  } catch (error: any) {
-    console.error("Failed to post tweet:", error.response?.data || error.message);
-  } finally {
-    isSubmittingRef.current = false;
-    setIsSubmitting(false);
-  }
-};
+    try {
+      const res = await axiosInstance.post("/post", {
+        content: content.trim(),
+        image:   imageurl || null,
+        // author is intentionally omitted — backend reads it from the JWT token
+      });
+      onTweetPosted(res.data);
+      setContent("");
+      setImageurl("");
+    } catch (error: any) {
+      // ── FIX: extract real message from every possible error shape ──────────
+      const serverMsg  = error.response?.data?.error
+                      || error.response?.data?.message
+                      || (typeof error.response?.data === "string" ? error.response.data : null);
+      const statusCode = error.response?.status;
+      const networkErr = !error.response && error.message;
+
+      if (statusCode === 403) {
+        setPostError(serverMsg || "Tweet limit reached. Please upgrade your plan.");
+      } else if (statusCode === 401) {
+        setPostError("Session expired — please log out and log in again.");
+      } else if (statusCode === 404) {
+        // Most likely wrong backend URL — show actionable message in dev
+        setPostError(
+          process.env.NODE_ENV === "development"
+            ? `Backend not reachable (404). Check NEXT_PUBLIC_BACKEND_URL in .env.local — current value: "${process.env.NEXT_PUBLIC_BACKEND_URL || "not set, using http://localhost:5000"}"`
+            : "Could not connect to server. Please try again."
+        );
+      } else if (networkErr) {
+        setPostError(`Network error: ${error.message}`);
+      } else {
+        setPostError(serverMsg || "Something went wrong. Please try again.");
+      }
+
+      console.error("[TweetComposer] POST /post failed →", {
+        status: statusCode,
+        data:   error.response?.data,
+        url:    error.config?.baseURL + error.config?.url,
+      });
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -165,7 +200,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       alert("Image too large. Maximum size is 32MB.");
       return;
     }
-    setIsUploading(true); // ← FIX: now separate from submit loading
+    setIsUploading(true);
     const formData = new FormData();
     formData.set("image", image);
     try {
@@ -176,24 +211,23 @@ const handleSubmit = async (e: React.FormEvent) => {
       const url = res.data?.data?.display_url;
       if (url) setImageurl(url);
     } catch (error: any) {
-      console.error("Image upload failed:", error);
+      console.error("[TweetComposer] Image upload failed:", error);
       alert("Failed to upload image. Please try again.");
     } finally {
-      setIsUploading(false); // ← FIX: only clears upload state
+      setIsUploading(false);
     }
-    // reset input so same file can be re-selected
     e.target.value = "";
   };
 
   const characterCount = content.length;
-  const isOverLimit   = characterCount > maxLength;
-  const isNearLimit   = characterCount > maxLength * 0.8;
-  const remaining     = maxLength - characterCount;
-  const ringRadius    = 13;
-  const ringCirc      = 2 * Math.PI * ringRadius;
-  const ringProgress  = Math.min(characterCount / maxLength, 1);
-  const ringColor     = isOverLimit ? "#ef4444" : isNearLimit ? "#eab308" : "#1d9bf0";
-  const isBusy        = isSubmitting || isUploading;
+  const isOverLimit    = characterCount > maxLength;
+  const isNearLimit    = characterCount > maxLength * 0.8;
+  const remaining      = maxLength - characterCount;
+  const ringRadius     = 13;
+  const ringCirc       = 2 * Math.PI * ringRadius;
+  const ringProgress   = Math.min(characterCount / maxLength, 1);
+  const ringColor      = isOverLimit ? "#ef4444" : isNearLimit ? "#eab308" : "#1d9bf0";
+  const isBusy         = isSubmitting || isUploading;
 
   if (!user) return null;
 
@@ -222,7 +256,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 className="tc-textarea"
                 placeholder="What's happening?"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => { setContent(e.target.value); setPostError(""); }}
                 rows={3}
                 disabled={isSubmitting}
               />
@@ -233,6 +267,14 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <button type="button" className="tc-preview-remove" onClick={() => setImageurl("")} aria-label="Remove image">
                     <X size={14} strokeWidth={2.5} />
                   </button>
+                </div>
+              )}
+
+              {/* ── Inline error banner ── */}
+              {postError && (
+                <div className="tc-error">
+                  <X size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} />
+                  {postError}
                 </div>
               )}
 
@@ -267,10 +309,10 @@ const handleSubmit = async (e: React.FormEvent) => {
                       disabled={isBusy}
                     />
                   </label>
-                  <button type="button" className="tc-icon-btn" data-tip="Poll" disabled={isBusy}><BarChart3 size={18} strokeWidth={2} /></button>
-                  <button type="button" className="tc-icon-btn" data-tip="Emoji" disabled={isBusy}><Smile size={18} strokeWidth={2} /></button>
+                  <button type="button" className="tc-icon-btn" data-tip="Poll"     disabled={isBusy}><BarChart3 size={18} strokeWidth={2} /></button>
+                  <button type="button" className="tc-icon-btn" data-tip="Emoji"    disabled={isBusy}><Smile    size={18} strokeWidth={2} /></button>
                   <button type="button" className="tc-icon-btn" data-tip="Schedule" disabled={isBusy}><Calendar size={18} strokeWidth={2} /></button>
-                  <button type="button" className="tc-icon-btn" data-tip="Location" disabled={isBusy}><MapPin size={18} strokeWidth={2} /></button>
+                  <button type="button" className="tc-icon-btn" data-tip="Location" disabled={isBusy}><MapPin   size={18} strokeWidth={2} /></button>
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

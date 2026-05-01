@@ -3,8 +3,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
-  Heart, MessageCircle, Repeat2,
-  Share, MoreHorizontal, Bookmark,
+  Heart,
+  MessageCircle,
+  Repeat2,
+  Share,
+  MoreHorizontal,
+  Bookmark,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import axiosInstance from "@/lib/axiosInstance";
@@ -428,17 +432,21 @@ export default function TweetCard({ tweet }: any) {
   }, []);
 
   // ── FIXED: removed userId from body — backend reads from token now ──
-  const likeTweet = async (tweetId: string) => {
-    try {
-      const res = await axiosInstance.post(`/like/${tweetId}`); // ← no body needed
-      settweetstate(res.data);
-      useEffect(() => {
-  sendTweetNotification(tweetstate.content);
-}, []);
-    } catch (error: any) {
-      console.error("Like error:", error.response?.data || error.message);
-    }
-  };
+useEffect(() => {
+  if (tweetstate.isLiked) { // Add a condition so it doesn't fire on initial load
+    sendTweetNotification(tweetstate.content);
+  }
+}, [tweetstate]); // This runs whenever tweetstate updates
+
+const likeTweet = async (tweetId: string) => {
+  try {
+    const res = await axiosInstance.post(`/like/${tweetId}`);
+    settweetstate(res.data); 
+    // The useEffect above will automatically catch this update
+  } catch (error: any) {
+    console.error("Like error:", error.response?.data || error.message);
+  }
+};
 
   const retweetTweet = async (tweetId: string) => {
     try {
@@ -457,10 +465,10 @@ export default function TweetCard({ tweet }: any) {
 
   // ── FIXED: .toString() comparison so ObjectId vs string works reliably ──
   const isLiked = tweetstate.likedBy?.some(
-    (id: any) => id?.toString() === user?._id?.toString()
+    (id: any) => id?.toString() === user?._id?.toString(),
   );
   const isRetweet = tweetstate.retweetedBy?.some(
-    (id: any) => id?.toString() === user?._id?.toString()
+    (id: any) => id?.toString() === user?._id?.toString(),
   );
 
   const handleLike = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -503,7 +511,10 @@ export default function TweetCard({ tweet }: any) {
             <button
               key={item}
               className="tc-more-menu-item"
-              onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(false);
+              }}
             >
               {item}
             </button>
@@ -512,7 +523,6 @@ export default function TweetCard({ tweet }: any) {
       )}
 
       <div style={{ display: "flex", gap: 12 }}>
-
         {/* ── Avatar with conic ring ── */}
         <div className="tc-avatar-wrap" style={{ width: 44, height: 44 }}>
           <div className="tc-avatar-ring" />
@@ -523,10 +533,14 @@ export default function TweetCard({ tweet }: any) {
                 alt={tweetstate.author?.displayName}
                 style={{ objectFit: "cover" }}
               />
-              <AvatarFallback style={{
-                background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
-                color: "#fff", fontWeight: 700, fontSize: 16,
-              }}>
+              <AvatarFallback
+                style={{
+                  background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 16,
+                }}
+              >
                 {tweetstate.author?.displayName?.[0]}
               </AvatarFallback>
             </Avatar>
@@ -535,10 +549,11 @@ export default function TweetCard({ tweet }: any) {
 
         {/* ── Body ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
-
           {/* Header */}
           <div className="tc-header">
-            <span className="tc-display-name">{tweetstate.author?.displayName}</span>
+            <span className="tc-display-name">
+              {tweetstate.author?.displayName}
+            </span>
 
             {tweetstate.author?.verified && (
               <span className="tc-verified">
@@ -553,13 +568,17 @@ export default function TweetCard({ tweet }: any) {
             <span className="tc-timestamp">
               {tweetstate.timestamp &&
                 new Date(tweetstate.timestamp).toLocaleDateString("en-US", {
-                  month: "short", day: "numeric",
+                  month: "short",
+                  day: "numeric",
                 })}
             </span>
 
             <button
               className="tc-more-btn"
-              onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu((v) => !v);
+              }}
             >
               <MoreHorizontal size={17} />
             </button>
@@ -577,15 +596,19 @@ export default function TweetCard({ tweet }: any) {
 
           {/* ── Actions ── */}
           <div className="tc-actions">
-
             {/* Comment */}
             <button
               className="tc-action-btn tc-comment-btn"
-              onClick={(e) => { e.stopPropagation(); fireRipple(e.currentTarget); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                fireRipple(e.currentTarget);
+              }}
             >
               <div className="tc-ripple" />
               <MessageCircle size={17} className="tc-action-icon" />
-              <span className="tc-action-count">{formatNumber(tweetstate.comments ?? 0)}</span>
+              <span className="tc-action-count">
+                {formatNumber(tweetstate.comments ?? 0)}
+              </span>
             </button>
 
             {/* Retweet */}
@@ -595,7 +618,9 @@ export default function TweetCard({ tweet }: any) {
             >
               <div className="tc-ripple" />
               <Repeat2 size={17} className="tc-action-icon" />
-              <span className="tc-action-count">{formatNumber(tweetstate.retweets ?? 0)}</span>
+              <span className="tc-action-count">
+                {formatNumber(tweetstate.retweets ?? 0)}
+              </span>
             </button>
 
             {/* Like — with heart burst ring */}
@@ -610,13 +635,18 @@ export default function TweetCard({ tweet }: any) {
                 className="tc-action-icon"
                 style={{ fill: isLiked ? "#f91880" : "none" }}
               />
-              <span className="tc-action-count">{formatNumber(tweetstate.likes ?? 0)}</span>
+              <span className="tc-action-count">
+                {formatNumber(tweetstate.likes ?? 0)}
+              </span>
             </button>
 
             {/* Share */}
             <button
               className="tc-action-btn tc-share-btn"
-              onClick={(e) => { e.stopPropagation(); fireRipple(e.currentTarget); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                fireRipple(e.currentTarget);
+              }}
             >
               <div className="tc-ripple" />
               <Share size={17} className="tc-action-icon" />

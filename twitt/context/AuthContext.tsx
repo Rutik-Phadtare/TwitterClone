@@ -27,97 +27,132 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  signup: (
-    email: string,
-    password: string,
-    username: string,
-    displayName: string
-  ) => Promise<void>;
+  signup: (email: string, password: string, username: string, displayName: string) => Promise<void>;
   updateProfile: (profileData: {
-    displayName: string;
-    bio: string;
-    location: string;
-    website: string;
-    avatar: string;
+    displayName: string; bio: string; location: string; website: string; avatar: string;
   }) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   googlesignin: () => void;
+  requiresOtp: boolean;
+  clearOtpRequirement: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 };
 
 const DEFAULT_AVATAR =
   "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400";
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+// ── Helper: persist user to localStorage ──────────────────────────────────────
+const persistUser = (u: User | null) => {
+  if (u) localStorage.setItem("twitter-user", JSON.stringify(u));
+  else    localStorage.removeItem("twitter-user");
+};
+
+// ── Helper: safely read user from localStorage ────────────────────────────────
+const readCachedUser = (): User | null => {
+  try {
+    const raw = localStorage.getItem("twitter-user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Basic guard — must have _id otherwise ignore stale cache
+    return parsed?._id ? (parsed as User) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // ── FIX: seed from localStorage so user._id is available instantly on refresh
+  const [user, setUser]               = useState<User | null>(readCachedUser);
+  const [isLoading, setIsLoading]     = useState(true);
+  const [requiresOtp, setRequiresOtp] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser?.email) {
         try {
-          // Token is auto-attached by axiosInstance interceptor
           const res = await axiosInstance.get("/loggedinuser");
-          if (res.data) {
+          if (res.data?._id) {
             setUser(res.data);
-            localStorage.setItem("twitter-user", JSON.stringify(res.data));
+            persistUser(res.data);
           }
-        } catch (err) {
-          console.error("Failed to fetch user on auth change:", err);
-          setUser(null);
+        } catch (err: any) {
+          // 404 = new user not yet in MongoDB (signup/google flow registers them next)
+          // Any other error: log it but keep cached user so UI doesn't flash
+          if (err.response?.status !== 404) {
+            console.error("[AuthContext] Failed to fetch user on auth change:", err);
+          }
         }
       } else {
+        // Signed out
         setUser(null);
-        localStorage.removeItem("twitter-user");
+        persistUser(null);
       }
       setIsLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  // ── Record login event + trigger OTP if needed ────────────────────────────
+  const recordLogin = async () => {
+    try {
+      const res = await axiosInstance.post("/login-event");
+      if (res.data.requiresOtp) {
+        await axiosInstance.post("/send-otp");
+        setRequiresOtp(true);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        await signOut(auth);
+        setUser(null);
+        persistUser(null);
+        alert(err.response.data.error);
+      } else {
+        console.error("[AuthContext] Login event error:", err);
+      }
+    }
+  };
+
+  const clearOtpRequirement = () => setRequiresOtp(false);
+
+  // ── Login ──────────────────────────────────────────────────────────────────
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged above handles fetching the user after login
+      // onAuthStateChanged handles /loggedinuser — recordLogin is independent
+      await recordLogin();
     } catch (error: any) {
       setIsLoading(false);
       throw new Error(error.message || "Login failed");
     }
   };
 
+  // ── Signup ─────────────────────────────────────────────────────────────────
   const signup = async (
-    email: string,
-    password: string,
-    username: string,
-    displayName: string
+    email: string, password: string, username: string, displayName: string
   ) => {
     setIsLoading(true);
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      // Token is now available — interceptor will attach it automatically
       const res = await axiosInstance.post("/register", {
         username,
         displayName,
         avatar: userCred.user.photoURL || DEFAULT_AVATAR,
-        email: userCred.user.email,
+        email:  userCred.user.email,
       });
-      if (res.data) {
+      if (res.data?._id) {
         setUser(res.data);
-        localStorage.setItem("twitter-user", JSON.stringify(res.data));
+        persistUser(res.data);
       }
+      await recordLogin();
     } catch (error: any) {
       throw new Error(error.message || "Signup failed");
     } finally {
@@ -125,30 +160,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = async () => {
     setUser(null);
-    localStorage.removeItem("twitter-user");
+    setRequiresOtp(false);
+    persistUser(null);
     await signOut(auth);
   };
 
+  // ── Update profile ─────────────────────────────────────────────────────────
   const updateProfile = async (profileData: {
-    displayName: string;
-    bio: string;
-    location: string;
-    website: string;
-    avatar: string;
+    displayName: string; bio: string; location: string; website: string; avatar: string;
   }) => {
     if (!user) return;
     setIsLoading(true);
     try {
-      // Only send the fields being updated, not the full user object
-      const res = await axiosInstance.patch(
-        `/userupdate/${user.email}`,
-        profileData
-      );
-      if (res.data) {
+      const res = await axiosInstance.patch(`/userupdate/${user.email}`, profileData);
+      if (res.data?._id) {
         setUser(res.data);
-        localStorage.setItem("twitter-user", JSON.stringify(res.data));
+        persistUser(res.data);
       }
     } catch (error: any) {
       throw new Error(error.message || "Profile update failed");
@@ -157,44 +187,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // ── Google sign-in ─────────────────────────────────────────────────────────
   const googlesignin = async () => {
     setIsLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
+      const provider     = new GoogleAuthProvider();
+      const result       = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 
       if (!firebaseUser?.email) throw new Error("No email from Google account");
 
-      // Try to fetch existing user first
-      let userData;
+      let userData: User | null = null;
+
       try {
         const res = await axiosInstance.get("/loggedinuser");
         userData = res.data;
       } catch (err: any) {
-        // 404 means user doesn't exist yet — that's fine, we register below
         if (err.response?.status !== 404) throw err;
       }
 
-      // If no existing user, register them
       if (!userData) {
         const res = await axiosInstance.post("/register", {
-          username: firebaseUser.email.split("@")[0],
+          username:    firebaseUser.email.split("@")[0],
           displayName: firebaseUser.displayName || "User",
-          avatar: firebaseUser.photoURL || DEFAULT_AVATAR,
-          email: firebaseUser.email,
+          avatar:      firebaseUser.photoURL    || DEFAULT_AVATAR,
+          email:       firebaseUser.email,
         });
         userData = res.data;
       }
 
-      if (userData) {
+      if (userData?._id) {
         setUser(userData);
-        localStorage.setItem("twitter-user", JSON.stringify(userData));
+        persistUser(userData);
       } else {
-        throw new Error("No user data returned");
+        throw new Error("No user data returned from server");
       }
+
+      await recordLogin();
     } catch (error: any) {
-      console.error("Google Sign-In Error:", error);
+      console.error("[AuthContext] Google Sign-In Error:", error);
       alert(error.response?.data?.message || error.message || "Login failed");
     } finally {
       setIsLoading(false);
@@ -202,9 +233,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, login, signup, updateProfile, logout, isLoading, googlesignin }}
-    >
+    <AuthContext.Provider value={{
+      user, login, signup, updateProfile, logout,
+      isLoading, googlesignin, requiresOtp, clearOtpRequirement,
+    }}>
       {children}
     </AuthContext.Provider>
   );

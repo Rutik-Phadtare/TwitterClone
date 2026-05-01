@@ -12,6 +12,7 @@ import {
   Settings,
   LogOut,
   Feather,
+  Star ,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ import { Button } from '../ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import TwitterLogo from '../Twitterlogo';
 import { useAuth } from '@/context/AuthContext';
+
 
 // ─── Inject styles once ───────────────────────────────────────────────────────
 const STYLE_ID = 'sidebar-styles';
@@ -310,15 +312,17 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
   const [hovered, setHovered] = useState<string | null>(null);
 
   // ── unchanged navigation config ───────────────────────────────────────────
-  const navigation = [
-    { name: 'Home',          icon: Home,          current: currentPage === 'home',          page: 'home' },
-    { name: 'Explore',       icon: Search,        current: currentPage === 'explore',       page: 'explore' },
-    { name: 'Notifications', icon: Bell,          current: currentPage === 'notifications', page: 'notifications', badge: true },
-    { name: 'Messages',      icon: Mail,          current: currentPage === 'messages',      page: 'messages' },
-    { name: 'Bookmarks',     icon: Bookmark,      current: currentPage === 'bookmarks',     page: 'bookmarks' },
-    { name: 'Profile',       icon: User,          current: currentPage === 'profile',       page: 'profile' },
-    { name: 'More',          icon: MoreHorizontal, current: currentPage === 'more',          page: 'more' },
-  ];
+// FIND this in the navigation array — add Subscribe after More:
+const navigation = [
+  { name: 'Home',          icon: Home,          current: currentPage === 'home',         page: 'home' },
+  { name: 'Explore',       icon: Search,        current: currentPage === 'explore',      page: 'explore' },
+  { name: 'Notifications', icon: Bell,          current: currentPage === 'notifications',page: 'notifications', badge: true },
+  { name: 'Messages',      icon: Mail,          current: currentPage === 'messages',     page: 'messages' },
+  { name: 'Bookmarks',     icon: Bookmark,      current: currentPage === 'bookmarks',    page: 'bookmarks' },
+  { name: 'Profile',       icon: User,          current: currentPage === 'profile',      page: 'profile' },
+  { name: 'Subscribe',     icon: Star,          current: currentPage === 'subscription', page: 'subscription' }, // ← ADD
+  { name: 'More',          icon: MoreHorizontal,current: currentPage === 'more',         page: 'more' },
+];
   // ──────────────────────────────────────────────────────────────────────────
 
   return (
@@ -372,7 +376,7 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
 
         {/* ── Post button ── */}
         <div style={{ marginTop: 18, padding: '0 6px' }}>
-          <button className="sb-post-btn">
+          <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
             <Feather size={17} strokeWidth={2.5} />
             Post
           </button>

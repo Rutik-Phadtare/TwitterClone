@@ -335,7 +335,7 @@ const suggestions = [
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function RightSidebar() {
+export default function RightSidebar({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const [followed, setFollowed] = useState<Set<string>>(new Set());
 
   const toggleFollow = (id: string) => {
@@ -396,10 +396,10 @@ export default function RightSidebar() {
           >
             Unlock new features and if eligible, receive a share of revenue.
           </p>
-          <button className="rs-premium-btn">
-            <Star size={13} strokeWidth={2.5} />
-            Subscribe
-          </button>
+        <button className="rs-premium-btn" onClick={() => onNavigate?.('subscription')}>
+         <Star size={13} strokeWidth={2.5} />
+         Subscribe
+        </button>
         </div>
       </div>
 
