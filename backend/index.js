@@ -381,12 +381,12 @@ app.post("/login-event", verifyToken, async (req, res) => {
                        || req.socket.remoteAddress;
 
     // Mobile time restriction: 10AM–1PM IST only
-   // if (deviceType === "mobile") {
-     // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-     // const hour = now.getHours();
-     // if (hour < 10 || hour >= 13)
-       // return res.status(403).json({ error: "Mobile login only allowed 10AM–1PM IST" });
- //   }
+    // if (deviceType === "mobile") {
+    //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    //   const hour = now.getHours();
+    //   if (hour < 10 || hour >= 13)
+    //     return res.status(403).json({ error: "Mobile login only allowed 10AM–1PM IST" });
+    // }
 
     const user = await User.findOne({ email: req.user.email });
     await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
@@ -427,10 +427,10 @@ app.get("/subscription", verifyToken, async (req, res) => {
 // Create Razorpay order (10AM–11AM IST only)
 app.post("/create-order", verifyToken, async (req, res) => {
   try {
-//  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
- // const hour = now.getHours();
-//  if (hour < 10 || hour >= 11)
-  //return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
+  // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  // const hour = now.getHours();
+  // if (hour < 10 || hour >= 11)
+  // return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
 
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
