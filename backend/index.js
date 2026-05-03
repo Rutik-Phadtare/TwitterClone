@@ -389,15 +389,15 @@ app.post("/verify-otp", verifyToken, async (req, res) => {
                                 browserLower.includes("ie");
 
             // ── Mobile time restriction: 10AM–1PM IST only ────────────────────────
-            if (deviceType === "mobile") {
-              const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-              const hour = now.getHours();
-              if (hour < 10 || hour >= 13) {
-                return res.status(403).json({
-                  error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST.",
-                });
-              }
-            }
+            // if (deviceType === "mobile") {
+            //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+            //   const hour = now.getHours();
+            //   if (hour < 10 || hour >= 13) {
+            //     return res.status(403).json({
+            //       error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST.",
+            //     });
+            //   }
+            // }
 
             const user = await User.findOne({ email: req.user.email });
             if (!user) return res.status(404).json({ error: "User not found" });
@@ -412,16 +412,16 @@ app.post("/verify-otp", verifyToken, async (req, res) => {
             return res.status(400).json({ error: error.message });
           }
         });
-app.get("/login-history", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.user.email });
-    const logs = await LoginLog.find({ userId: user._id })
-      .sort({ timestamp: -1 }).limit(20);
-    return res.json(logs);
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
-});
+        app.get("/login-history", verifyToken, async (req, res) => {
+          try {
+            const user = await User.findOne({ email: req.user.email });
+            const logs = await LoginLog.find({ userId: user._id })
+              .sort({ timestamp: -1 }).limit(20);
+            return res.json(logs);
+          } catch (error) {
+            return res.status(400).json({ error: error.message });
+          }
+        });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBSCRIPTION / PAYMENT ROUTES
