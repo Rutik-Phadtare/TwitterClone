@@ -427,8 +427,8 @@ app.get("/subscription", verifyToken, async (req, res) => {
 // Create Razorpay order (10AM–11AM IST only)
 app.post("/create-order", verifyToken, async (req, res) => {
   try {
-  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  const hour = now.getHours();
+//  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+ // const hour = now.getHours();
 //  if (hour < 10 || hour >= 11)
   //return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
 
