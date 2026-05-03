@@ -44,9 +44,9 @@ const audioUpload = multer({ limits: { fileSize: 100 * 1024 * 1024 } }); // audi
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
 const PLANS = {
-  bronze: { price: 10000,  limit: 3         },
-  silver: { price: 30000,  limit: 5         },
-  gold:   { price: 100000, limit: Infinity  },
+  bronze: { price: 10000,  limit: 3  },
+  silver: { price: 30000,  limit: 5  },
+  gold:   { price: 100000, limit: -1 }, // -1 = unlimited
 };
 
 // ─── OTP store (in-memory) ────────────────────────────────────────────────────
@@ -160,28 +160,38 @@ app.post("/post", verifyToken, async (req, res) => {
     if (!dbUser) return res.status(404).send({ error: "User not found — please register first" });
 
     // ── Subscription limit check ──────────────────────────────────────────────
-    const sub = await Subscription.findOne({ userId: dbUser._id });
-    const tweetLimit = sub?.tweetLimit ?? 1;          // default free = 1
-    const tweetsUsed = sub?.tweetsUsed  ?? 0;
-    if (tweetLimit !== Infinity && tweetsUsed >= tweetLimit) {
-      return res.status(403).send({
-        error: `Tweet limit reached (${tweetLimit}). Upgrade your plan to post more.`,
-      });
-    }
+const sub        = await Subscription.findOne({ userId: dbUser._id });
+const tweetLimit = sub?.tweetLimit ?? 1;
+const tweetsUsed = sub?.tweetsUsed ?? 0;
 
-    const tweet = new Tweet({
-      content,
-      image:  req.body.image  || null,
-      audio:  req.body.audio  || null,
-      author: dbUser._id,               // always set from token — never trust frontend
-    });
-    await tweet.save();
+// -1 means unlimited — only check limit when tweetLimit is a positive number
+if (tweetLimit !== -1 && tweetsUsed >= tweetLimit) {
+  return res.status(403).send({
+    error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.`,
+  });
+}
 
-    // Increment usage counter
-    if (sub) { sub.tweetsUsed += 1; await sub.save(); }
-    else {
-      await Subscription.create({ userId: dbUser._id, tweetLimit: 1, tweetsUsed: 1 });
-    }
+const tweet = new Tweet({
+  content,
+  image:  req.body.image || null,
+  audio:  req.body.audio || null,
+  author: dbUser._id,
+});
+await tweet.save();
+
+// Increment usage counter
+if (sub) {
+  sub.tweetsUsed += 1;
+  await sub.save();
+} else {
+  // First tweet — create free plan subscription record
+  await Subscription.create({
+    userId:     dbUser._id,
+    plan:       "free",
+    tweetLimit: 1,
+    tweetsUsed: 1,
+  });
+}
 
     const populated = await tweet.populate("author");
     return res.status(201).send(populated);
@@ -417,10 +427,10 @@ app.get("/subscription", verifyToken, async (req, res) => {
 // Create Razorpay order (10AM–11AM IST only)
 app.post("/create-order", verifyToken, async (req, res) => {
   try {
-    const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const hour = now.getHours();
-    if (hour < 10 || hour >= 11)
-      return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
+  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const hour = now.getHours();
+  if (hour < 10 || hour >= 11)
+  return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
 
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
@@ -456,10 +466,10 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-    await Subscription.findOneAndUpdate(
+      await Subscription.findOneAndUpdate(
       { userId: user._id },
       { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
-      { upsert: true }
+      { upsert: true, new: true }
     );
 
     // Invoice email
