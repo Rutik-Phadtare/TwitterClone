@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, Calendar, MapPin,
-  Link as LinkIcon, MoreHorizontal, Camera,
+  Link as LinkIcon, MoreHorizontal, Camera, LogOut, Settings,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -13,7 +13,13 @@ import Editprofile from "./Editprofile";
 import axiosInstance from "@/lib/axiosInstance";
 import NotificationToggle from "./NotificationToggle";
 import LoginHistory from "./LoginHistory";
-// import loginHistory from "@/lib/loginHistory";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 const STYLE_ID = "profile-page-styles";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
@@ -37,6 +43,10 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     @keyframes pp-bannerReveal {
       from { opacity:0; transform:scaleY(0.93); transform-origin:top; }
       to   { opacity:1; transform:scaleY(1); }
+    }
+    @keyframes pp-popIn {
+      from { opacity: 0; transform: scale(0.93) translateY(6px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
     }
     .pp-banner      { animation: pp-bannerReveal 0.45s cubic-bezier(0.22,1,0.36,1) both; }
     .pp-avatar-ring { animation: pp-scaleIn 0.4s 0.15s cubic-bezier(0.22,1,0.36,1) both; }
@@ -72,6 +82,39 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .pp-tweet-row:hover { background: rgba(255,255,255,0.018); }
+
+    /* Dropdown styles (reuse sidebar pattern) */
+    .pp-dropdown-content {
+      background: #16181c !important;
+      border: 1px solid rgba(255,255,255,0.1) !important;
+      border-radius: 16px !important;
+      padding: 6px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.4) !important;
+      animation: pp-popIn 0.2s cubic-bezier(0.22,1,0.36,1) both;
+      min-width: 200px !important;
+    }
+    .pp-dropdown-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 11px 14px !important;
+      border-radius: 10px !important;
+      color: rgba(255,255,255,0.9) !important;
+      font-family: 'DM Sans', sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 500 !important;
+      cursor: pointer !important;
+      transition: background 0.15s ease !important;
+    }
+    .pp-dropdown-item:hover { background: rgba(255,255,255,0.07) !important; }
+    .pp-dropdown-item.danger { color: #f4212e !important; }
+    .pp-dropdown-item.danger:hover { background: rgba(244,33,46,0.1) !important; }
+    .pp-dropdown-sep {
+      height: 1px !important;
+      background: rgba(255,255,255,0.07) !important;
+      margin: 4px 0 !important;
+    }
+
     @media (max-width: 600px) {
       .pp-banner-h  { height: 130px !important; }
       .pp-avatar-sz { width: 82px !important; height: 82px !important; }
@@ -119,7 +162,7 @@ const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) =>
 );
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState("posts");
   const [showEditModal, setShowEditModal] = useState(false);
   const [bannerSrc, setBannerSrc] = useState<string | null>(null);
@@ -131,7 +174,7 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       const res = await axiosInstance.get("/post");
-      setTweets(res.data.tweets ?? []); // ← FIX: was res.data (an object, not array)
+      setTweets(res.data.tweets ?? []);
     } catch (error) {
       console.error(error);
     } finally {
@@ -145,7 +188,6 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  // ← FIX: use .toString() — ObjectId objects are never === with plain string comparison
   const userTweets = tweets.filter(
     (tweet: any) => tweet.author?._id?.toString() === user._id?.toString()
   );
@@ -158,18 +200,18 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
-<NotificationToggle />
+  <NotificationToggle />
   const TABS = [
-  { value: "posts",      label: "Posts" },
-  { value: "replies",    label: "Replies" },
-  { value: "highlights", label: "Highlights" },
-  { value: "articles",   label: "Articles" },
-  { value: "media",      label: "Media" },
-  { value: "security",   label: "Security" },
+    { value: "posts",      label: "Posts" },
+    { value: "replies",    label: "Replies" },
+    { value: "highlights", label: "Highlights" },
+    { value: "articles",   label: "Articles" },
+    { value: "media",      label: "Media" },
+    { value: "security",   label: "Security" },
   ];
 
   return (
-     <div className="pp-root" style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif", paddingBottom: 72 }}>
+    <div className="pp-root" style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif", paddingBottom: 72 }}>
 
       {/* Sticky Header */}
       <div style={{
@@ -193,7 +235,7 @@ export default function ProfilePage() {
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
+          <div style={{ flex: 1 }}>
             <h1 className="pp-header-name" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>
               {user.displayName}
             </h1>
@@ -201,6 +243,53 @@ export default function ProfilePage() {
               {userTweets.length} post{userTweets.length !== 1 ? "s" : ""}
             </p>
           </div>
+
+          {/* ── More / Logout dropdown in header ── */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                style={{
+                  width: 36, height: 36, borderRadius: "50%", border: "none",
+                  background: "transparent", color: "rgba(255,255,255,0.6)", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "background 0.18s ease",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.1)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="pp-dropdown-content"
+              side="bottom"
+              align="end"
+              sideOffset={8}
+            >
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid rgba(255,255,255,0.07)", marginBottom: 4 }}>
+                <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{user.displayName}</div>
+                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>@{user.username}</div>
+              </div>
+
+              <DropdownMenuItem
+                className="pp-dropdown-item"
+                onClick={() => setShowEditModal(true)}
+              >
+                <Settings size={15} style={{ opacity: 0.7 }} />
+                Edit profile
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator className="pp-dropdown-sep" />
+
+              <DropdownMenuItem
+                className="pp-dropdown-item danger"
+                onClick={logout}
+              >
+                <LogOut size={15} />
+                Log out @{user.username}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -286,18 +375,6 @@ export default function ProfilePage() {
               @{user.username}
             </p>
           </div>
-          <button
-            style={{
-              width: 34, height: 34, borderRadius: "50%", border: "none",
-              background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "background 0.18s",
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-          >
-            <MoreHorizontal size={18} />
-          </button>
         </div>
 
         {user.bio && (
@@ -377,7 +454,7 @@ export default function ProfilePage() {
             <EmptyState title="No media yet" subtitle="Photos and videos you post will appear here." />
           </TabsContent>
           <TabsContent value="security" style={{ margin: 0 }}>
-           <LoginHistory />
+            <LoginHistory />
           </TabsContent>
         </Tabs>
       </div>
