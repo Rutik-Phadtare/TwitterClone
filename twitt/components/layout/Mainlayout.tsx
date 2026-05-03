@@ -128,6 +128,9 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
         <div style={{
           flexShrink: 0,
           borderRight: "1px solid rgba(255,255,255,0.08)",
+           position: "sticky",   // ← ONLY CHANGE
+            top: 0,               // ← ONLY CHANGE
+            height: "100vh",
         }}
           className="hidden md:block md:w-64 lg:w-72"
         >
@@ -150,7 +153,11 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
         </main>
 
         {/* ── Desktop right sidebar (hidden on mobile + tablet) ── */}
-        <div style={{ flexShrink: 0, padding: "12px 16px" }}
+        <div style={{ flexShrink: 0, padding: "12px 16px",
+           position: "sticky",   // ← ONLY CHANGE
+            top: 0,               // ← ONLY CHANGE
+            height: "100vh",
+         }}
           className="hidden lg:block lg:w-80"
         >
           <RightSidebar onNavigate={setCurrentPage} />

@@ -168,7 +168,7 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
     .sb-post-btn:active {
       transform: scale(0.97);
     }
-
+ 
     /* Logo wrapper */
     .sb-logo {
       animation: sb-logoReveal 0.5s 0.05s cubic-bezier(0.22,1,0.36,1) both;
@@ -375,15 +375,13 @@ const navigation = [
         </ul>
 
         {/* ── Post button ── */}
-        <div style={{ marginTop: 18, padding: '0 6px' }}>
-          <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
-            <Feather size={17} strokeWidth={2.5} />
-            Post
-          </button>
-        </div>
-      </nav>
-
-      {/* ── User card ── */}
+       <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
+  <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
+    <Feather size={17} strokeWidth={2.5} />
+    Post
+  </button>
+</div>
+         {/* ── User card ── */}
       {user && (
         <div
           style={{
@@ -413,7 +411,7 @@ const navigation = [
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      color: '#fff',
+                      color: '#ffffff',
                       fontWeight: 700,
                       fontSize: 14,
                       lineHeight: 1.3,
@@ -458,7 +456,7 @@ const navigation = [
                   marginBottom: 4,
                 }}
               >
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>
+                <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 14 }}>
                   {user.displayName}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
@@ -484,6 +482,9 @@ const navigation = [
           </DropdownMenu>
         </div>
       )}
+      </nav>
+
+     
     </div>
   );
 }

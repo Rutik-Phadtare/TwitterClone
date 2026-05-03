@@ -13,6 +13,8 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import axiosInstance from "@/lib/axiosInstance";
 import { sendTweetNotification } from "@/lib/notificationUtils";
+import { timeAgo } from "@/lib/timeAgo";
+import { formatTweetContent } from "@/lib/formatTweetContent";
 
 const STYLE_ID = "tweetcard-styles";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
@@ -419,7 +421,6 @@ export default function TweetCard({ tweet }: any) {
   const [likePopping, setLikePopping] = useState(false);
   const [heartBurst, setHeartBurst] = useState(false);
   const [retweetSpinning, setRetweetSpinning] = useState(false);
-  const [bookmarked, setBookmarked] = useState(false);
   const [bookmarkBouncing, setBookmarkBouncing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isNew, setIsNew] = useState(true);
@@ -491,12 +492,24 @@ const likeTweet = async (tweetId: string) => {
     retweetTweet(tweetstate._id);
   };
 
-  const handleBookmark = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    setBookmarked((v) => !v);
-    setBookmarkBouncing(true);
-    setTimeout(() => setBookmarkBouncing(false), 450);
-  };
+const handleBookmark = (e: React.MouseEvent<HTMLButtonElement>) => {
+  e.stopPropagation();
+  const saved = JSON.parse(localStorage.getItem("bookmarks") || "[]");
+  const newSaved = bookmarked
+    ? saved.filter((id: string) => id !== tweetstate._id)
+    : [...saved, tweetstate._id];
+  localStorage.setItem("bookmarks", JSON.stringify(newSaved));
+  setBookmarked((v: boolean) => !v);
+  setBookmarkBouncing(true);
+  setTimeout(() => setBookmarkBouncing(false), 450);
+};
+
+// Also initialize from localStorage:
+const [bookmarked, setBookmarked] = useState(() => {
+  if (typeof window === "undefined") return false;
+  const saved = JSON.parse(localStorage.getItem("bookmarks") || "[]");
+  return saved.includes(tweet._id);
+});
 
   return (
     <div
@@ -566,11 +579,7 @@ const likeTweet = async (tweetId: string) => {
             <span className="tc-username">@{tweetstate.author?.username}</span>
             <span className="tc-dot">·</span>
             <span className="tc-timestamp">
-              {tweetstate.timestamp &&
-                new Date(tweetstate.timestamp).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
+             {tweetstate.timestamp && timeAgo(tweetstate.timestamp)}
             </span>
 
             <button
@@ -585,7 +594,7 @@ const likeTweet = async (tweetId: string) => {
           </div>
 
           {/* Content */}
-          <div className="tc-content">{tweetstate.content}</div>
+          <div className="tc-content">{formatTweetContent(tweetstate.content)}</div>
 
           {/* Image */}
           {tweetstate.image && (
