@@ -61,6 +61,10 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
       animation: sb-fadeIn 0.4s cubic-bezier(0.22,1,0.36,1) both;
     }
 
+    /* Hide scrollbar but keep scroll functional */
+    .sb-root::-webkit-scrollbar { display: none; }
+    .sb-root { -ms-overflow-style: none; scrollbar-width: none; }
+
     /* Nav items */
     .sb-nav-item {
       position: relative;
@@ -311,19 +315,16 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
   const { user, logout } = useAuth();
   const [hovered, setHovered] = useState<string | null>(null);
 
-  // ── unchanged navigation config ───────────────────────────────────────────
-// FIND this in the navigation array — add Subscribe after More:
-const navigation = [
-  { name: 'Home',          icon: Home,          current: currentPage === 'home',         page: 'home' },
-  { name: 'Explore',       icon: Search,        current: currentPage === 'explore',      page: 'explore' },
-  { name: 'Notifications', icon: Bell,          current: currentPage === 'notifications',page: 'notifications', badge: true },
-  { name: 'Messages',      icon: Mail,          current: currentPage === 'messages',     page: 'messages' },
-  { name: 'Bookmarks',     icon: Bookmark,      current: currentPage === 'bookmarks',    page: 'bookmarks' },
-  { name: 'Profile',       icon: User,          current: currentPage === 'profile',      page: 'profile' },
-  { name: 'Subscribe',     icon: Star,          current: currentPage === 'subscription', page: 'subscription' }, // ← ADD
-  { name: 'More',          icon: MoreHorizontal,current: currentPage === 'more',         page: 'more' },
-];
-  // ──────────────────────────────────────────────────────────────────────────
+  const navigation = [
+    { name: 'Home',          icon: Home,          current: currentPage === 'home',         page: 'home' },
+    { name: 'Explore',       icon: Search,        current: currentPage === 'explore',      page: 'explore' },
+    { name: 'Notifications', icon: Bell,          current: currentPage === 'notifications',page: 'notifications', badge: true },
+    { name: 'Messages',      icon: Mail,          current: currentPage === 'messages',     page: 'messages' },
+    { name: 'Bookmarks',     icon: Bookmark,      current: currentPage === 'bookmarks',    page: 'bookmarks' },
+    { name: 'Profile',       icon: User,          current: currentPage === 'profile',      page: 'profile' },
+    { name: 'Subscribe',     icon: Star,          current: currentPage === 'subscription', page: 'subscription' },
+    { name: 'More',          icon: MoreHorizontal,current: currentPage === 'more',         page: 'more' },
+  ];
 
   return (
     <div
@@ -331,10 +332,14 @@ const navigation = [
       style={{
         display: 'flex',
         flexDirection: 'column',
+        // Sticky so it stays pinned while the main feed scrolls
+        position: 'sticky',
+        top: 0,
+        // Fixed height + independent scroll so nothing is clipped in Chrome
         height: '100vh',
+        overflowY: 'auto',
         width: 260,
         background: '#000',
-        position: 'relative',
         flexShrink: 0,
       }}
     >
@@ -349,7 +354,7 @@ const navigation = [
       </div>
 
       {/* ── Navigation ── */}
-      <nav style={{ flex: 1, padding: '4px 10px', overflowY: 'auto' }}>
+      <nav style={{ flex: 1, padding: '4px 10px' }}>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {navigation.map((item, idx) => (
             <li key={item.name}>
@@ -375,13 +380,15 @@ const navigation = [
         </ul>
 
         {/* ── Post button ── */}
-       <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
-  <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
-    <Feather size={17} strokeWidth={2.5} />
-    Post
-  </button>
-</div>
-         {/* ── User card ── */}
+        <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
+          <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
+            <Feather size={17} strokeWidth={2.5} />
+            Post
+          </button>
+        </div>
+      </nav>
+
+      {/* ── User card ── */}
       {user && (
         <div
           style={{
@@ -482,9 +489,6 @@ const navigation = [
           </DropdownMenu>
         </div>
       )}
-      </nav>
-
-     
     </div>
   );
 }

@@ -10,11 +10,9 @@ import NotificationsPage from "../pages/NotificationsPage";
 import MessagesPage from "../pages/MessagesPage";
 import BookmarksPage from "../pages/BookmarksPage";
 import SubscriptionPage from "../pages/SubscriptionPage";
-import {
-  Home, Search, Bell, User, Star,
-} from "lucide-react";
+import OtpVerificationModal from "../OtpVerificationModal";
+import { Home, Search, Bell, User, Star } from "lucide-react";
 
-// ── Mobile bottom nav items ───────────────────────────────────────────────────
 const MOBILE_NAV = [
   { page: "home",          icon: Home,   label: "Home" },
   { page: "explore",       icon: Search, label: "Explore" },
@@ -43,6 +41,14 @@ const BOTTOM_NAV_STYLES = `
     padding: 0 4px;
     animation: bn-fadeIn 0.3s ease both;
   }
+
+  /* ── Hide mobile nav on desktop ── */
+  @media (min-width: 768px) {
+    .bn-root {
+      display: none !important;
+    }
+  }
+
   .bn-btn {
     display: flex;
     flex-direction: column;
@@ -61,9 +67,7 @@ const BOTTOM_NAV_STYLES = `
   }
   .bn-btn:active { transform: scale(0.9); }
   .bn-btn.active { color: #1d9bf0; }
-  .bn-btn.active .bn-icon-wrap {
-    background: rgba(29,155,240,0.12);
-  }
+  .bn-btn.active .bn-icon-wrap { background: rgba(29,155,240,0.12); }
   .bn-icon-wrap {
     width: 32px; height: 32px;
     border-radius: 9999px;
@@ -80,8 +84,13 @@ const BOTTOM_NAV_STYLES = `
   }
 `;
 
-const Mainlayout = ({ children }: { children: React.ReactNode }) => {
-  const { user, isLoading } = useAuth();
+// ─── Props ────────────────────────────────────────────────────────────────────
+interface MainlayoutProps {
+  children: React.ReactNode;
+}
+
+const Mainlayout = ({ children }: MainlayoutProps) => {
+  const { user, isLoading, showOtpModal, dismissOtpModal, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState("home");
 
   if (isLoading) {
@@ -123,48 +132,51 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
         display: "flex",
         justifyContent: "center",
       }}>
-
-        {/* ── Desktop left sidebar (hidden on mobile) ── */}
-        <div style={{
-          flexShrink: 0,
-          borderRight: "1px solid rgba(255,255,255,0.08)",
-           position: "sticky",   // ← ONLY CHANGE
-            top: 0,               // ← ONLY CHANGE
+        {/* ── Desktop left sidebar ── */}
+        <div
+          style={{
+            flexShrink: 0,
+            borderRight: "1px solid rgba(255,255,255,0.08)",
+            position: "sticky",
+            top: 0,
             height: "100vh",
-        }}
+          }}
           className="hidden md:block md:w-64 lg:w-72"
         >
           <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
         </div>
 
         {/* ── Main content ── */}
-        <main style={{
-          flex: 1,
-          maxWidth: 600,
-          borderLeft:  "1px solid rgba(255,255,255,0.08)",
-          borderRight: "1px solid rgba(255,255,255,0.08)",
-          minHeight: "100vh",
-          // Add bottom padding on mobile so content isn't hidden behind bottom nav
-          paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        }}
+        <main
+          style={{
+            flex: 1,
+            maxWidth: 600,
+            borderLeft:  "1px solid rgba(255,255,255,0.08)",
+            borderRight: "1px solid rgba(255,255,255,0.08)",
+            minHeight: "100vh",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
           className="pb-16 md:pb-0"
         >
           {renderPage()}
         </main>
 
-        {/* ── Desktop right sidebar (hidden on mobile + tablet) ── */}
-        <div style={{ flexShrink: 0, padding: "12px 16px",
-           position: "sticky",   // ← ONLY CHANGE
-            top: 0,               // ← ONLY CHANGE
+        {/* ── Desktop right sidebar ── */}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "12px 16px",
+            position: "sticky",
+            top: 0,
             height: "100vh",
-         }}
+          }}
           className="hidden lg:block lg:w-80"
         >
           <RightSidebar onNavigate={setCurrentPage} />
         </div>
       </div>
 
-      {/* ── Mobile bottom navigation (hidden on md and up) ── */}
+      {/* ── Mobile bottom nav (hidden on desktop) ── */}
       <nav className="bn-root md:hidden">
         {MOBILE_NAV.map(item => (
           <button
@@ -173,15 +185,19 @@ const Mainlayout = ({ children }: { children: React.ReactNode }) => {
             onClick={() => setCurrentPage(item.page)}
           >
             <div className="bn-icon-wrap">
-              <item.icon
-                size={20}
-                strokeWidth={currentPage === item.page ? 2.5 : 2}
-              />
+              <item.icon size={20} strokeWidth={currentPage === item.page ? 2.5 : 2} />
             </div>
             <span className="bn-label">{item.label}</span>
           </button>
         ))}
       </nav>
+
+      {/* ── OTP verification modal ── */}
+      <OtpVerificationModal
+        isOpen={showOtpModal}
+        onClose={dismissOtpModal}
+        onLogout={async () => { await logout(); dismissOtpModal(); }}
+      />
     </>
   );
 };

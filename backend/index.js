@@ -371,33 +371,47 @@ app.post("/verify-otp", verifyToken, async (req, res) => {
 // LOGIN HISTORY
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.post("/login-event", verifyToken, async (req, res) => {
-  try {
-    const ua         = new UAParser(req.headers["user-agent"]);
-    const browser    = ua.getBrowser().name  || "Unknown";
-    const os         = ua.getOS().name       || "Unknown";
-    const deviceType = ua.getDevice().type   || "desktop";
-    const ip         = req.headers["x-forwarded-for"]?.split(",")[0]
-                       || req.socket.remoteAddress;
+        app.post("/login-event", verifyToken, async (req, res) => {
+          try {
+            const ua         = new UAParser(req.headers["user-agent"]);
+            const browser    = ua.getBrowser().name  || "Unknown";
+            const os         = ua.getOS().name       || "Unknown";
+            const deviceType = ua.getDevice().type   || "desktop";
+            const ip         = req.headers["x-forwarded-for"]?.split(",")[0]
+                              || req.socket.remoteAddress;
 
-    // Mobile time restriction: 10AM–1PM IST only
-    // if (deviceType === "mobile") {
-    //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    //   const hour = now.getHours();
-    //   if (hour < 10 || hour >= 13)
-    //     return res.status(403).json({ error: "Mobile login only allowed 10AM–1PM IST" });
-    // }
+            const browserLower = (browser || "").toLowerCase();
 
-    const user = await User.findOne({ email: req.user.email });
-    await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
+            // ── Microsoft browser — skip OTP entirely ─────────────────────────────
+            const isMicrosoft = browserLower.includes("edge")    ||
+                                browserLower.includes("msie")    ||
+                                browserLower.includes("trident") ||
+                                browserLower.includes("ie");
 
-    const requiresOtp = browser?.toLowerCase().includes("chrome");
-    return res.json({ requiresOtp, browser, os, device: deviceType });
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
-});
+            // ── Mobile time restriction: 10AM–1PM IST only ────────────────────────
+            if (deviceType === "mobile") {
+              const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+              const hour = now.getHours();
+              if (hour < 10 || hour >= 13) {
+                return res.status(403).json({
+                  error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST.",
+                });
+              }
+            }
 
+            const user = await User.findOne({ email: req.user.email });
+            if (!user) return res.status(404).json({ error: "User not found" });
+
+            await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
+
+            // Chrome = OTP required. Microsoft = free pass. Everything else = no OTP.
+            const requiresOtp = browserLower.includes("chrome") && !isMicrosoft;
+
+            return res.json({ requiresOtp, browser, os, device: deviceType, isMicrosoft });
+          } catch (error) {
+            return res.status(400).json({ error: error.message });
+          }
+        });
 app.get("/login-history", verifyToken, async (req, res) => {
   try {
     const user = await User.findOne({ email: req.user.email });
@@ -493,5 +507,17 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
     return res.json({ message: "Payment verified and subscription activated", plan });
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/suggested-users", verifyToken, async (req, res) => {
+  try {
+    const users = await User.find({ email: { $ne: req.user.email } })
+  .select("displayName email avatar username")  // ← correct field names
+  .limit(5)
+  .lean();
+    return res.json(users);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 });

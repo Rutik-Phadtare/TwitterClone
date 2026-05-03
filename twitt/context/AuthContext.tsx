@@ -36,6 +36,8 @@ interface AuthContextType {
   googlesignin: () => void;
   requiresOtp: boolean;
   clearOtpRequirement: () => void;
+  showOtpModal: boolean;
+  dismissOtpModal: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,21 +49,18 @@ export const useAuth = () => {
 };
 
 const DEFAULT_AVATAR =
-  "https://images.pexels.com/photos/1139743/pexels-photo-1139743.jpeg?auto=compress&cs=tinysrgb&w=400";
+  "https://as1.ftcdn.net/jpg/03/91/19/22/1000_F_391192211_2w5pQpFV1aozYQhcIw3FqA35vuTxJKrB.webp";
 
-// ── Helper: persist user to localStorage ──────────────────────────────────────
 const persistUser = (u: User | null) => {
   if (u) localStorage.setItem("twitter-user", JSON.stringify(u));
-  else    localStorage.removeItem("twitter-user");
+  else   localStorage.removeItem("twitter-user");
 };
 
-// ── Helper: safely read user from localStorage ────────────────────────────────
 const readCachedUser = (): User | null => {
   try {
     const raw = localStorage.getItem("twitter-user");
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // Basic guard — must have _id otherwise ignore stale cache
     return parsed?._id ? (parsed as User) : null;
   } catch {
     return null;
@@ -69,10 +68,10 @@ const readCachedUser = (): User | null => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ── FIX: seed from localStorage so user._id is available instantly on refresh
   const [user, setUser]               = useState<User | null>(readCachedUser);
   const [isLoading, setIsLoading]     = useState(true);
   const [requiresOtp, setRequiresOtp] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false); // ← NEW
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -84,14 +83,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             persistUser(res.data);
           }
         } catch (err: any) {
-          // 404 = new user not yet in MongoDB (signup/google flow registers them next)
-          // Any other error: log it but keep cached user so UI doesn't flash
           if (err.response?.status !== 404) {
             console.error("[AuthContext] Failed to fetch user on auth change:", err);
           }
         }
       } else {
-        // Signed out
         setUser(null);
         persistUser(null);
       }
@@ -100,13 +96,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // ── Record login event + trigger OTP if needed ────────────────────────────
+  // ── Record login event + trigger OTP modal if Chrome ─────────────────────
   const recordLogin = async () => {
     try {
       const res = await axiosInstance.post("/login-event");
       if (res.data.requiresOtp) {
         await axiosInstance.post("/send-otp");
         setRequiresOtp(true);
+        setShowOtpModal(true); // ← show modal
       }
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -121,13 +118,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const clearOtpRequirement = () => setRequiresOtp(false);
+  const dismissOtpModal     = () => {
+    setShowOtpModal(false);
+    setRequiresOtp(false);
+  };
 
   // ── Login ──────────────────────────────────────────────────────────────────
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged handles /loggedinuser — recordLogin is independent
       await recordLogin();
     } catch (error: any) {
       setIsLoading(false);
@@ -164,6 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setUser(null);
     setRequiresOtp(false);
+    setShowOtpModal(false);
     persistUser(null);
     await signOut(auth);
   };
@@ -235,7 +236,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{
       user, login, signup, updateProfile, logout,
-      isLoading, googlesignin, requiresOtp, clearOtpRequirement,
+      isLoading, googlesignin,
+      requiresOtp, clearOtpRequirement,
+      showOtpModal, dismissOtpModal,
     }}>
       {children}
     </AuthContext.Provider>

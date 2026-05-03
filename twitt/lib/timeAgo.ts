@@ -5,4 +5,4 @@ export const timeAgo = (date: string | Date): string => {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
   return new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-};
+};  

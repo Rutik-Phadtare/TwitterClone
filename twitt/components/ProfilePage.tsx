@@ -12,6 +12,7 @@ import TweetCard from "./TweetCard";
 import Editprofile from "./Editprofile";
 import axiosInstance from "@/lib/axiosInstance";
 import NotificationToggle from "./NotificationToggle";
+import LoginHistory from "./LoginHistory";
 // import loginHistory from "@/lib/loginHistory";
 
 const STYLE_ID = "profile-page-styles";
@@ -159,11 +160,12 @@ export default function ProfilePage() {
 
 <NotificationToggle />
   const TABS = [
-    { value: "posts",      label: "Posts" },
-    { value: "replies",    label: "Replies" },
-    { value: "highlights", label: "Highlights" },
-    { value: "articles",   label: "Articles" },
-    { value: "media",      label: "Media" },
+  { value: "posts",      label: "Posts" },
+  { value: "replies",    label: "Replies" },
+  { value: "highlights", label: "Highlights" },
+  { value: "articles",   label: "Articles" },
+  { value: "media",      label: "Media" },
+  { value: "security",   label: "Security" },
   ];
 
   return (
@@ -373,6 +375,9 @@ export default function ProfilePage() {
           </TabsContent>
           <TabsContent value="media" style={{ margin: 0 }}>
             <EmptyState title="No media yet" subtitle="Photos and videos you post will appear here." />
+          </TabsContent>
+          <TabsContent value="security" style={{ margin: 0 }}>
+           <LoginHistory />
           </TabsContent>
         </Tabs>
       </div>

@@ -667,19 +667,22 @@ export default function AuthModal({
                 )}
               </div>
 
-              <div style={{ textAlign: "right", marginTop: 4 }}>
-              <Link
-               href="/forgot-password"
-               style={{
-                color: "#1d9bf0",
-                fontSize: 13,
-                textDecoration: "none",
-                fontWeight: 500,
-                }}
-                >
-                Forgot password?
-              </Link>
-            </div>
+              {/* Forgot password — login mode only */}
+              {!isSignup && (
+                <div style={{ textAlign: "right", marginTop: 4 }}>
+                  <Link
+                    href="/forgot-password"
+                    style={{
+                      color: "#1d9bf0",
+                      fontSize: 13,
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              )}
 
               {/* Submit */}
               <button
