@@ -161,15 +161,14 @@ const fetchTweets = async () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#000",
-        fontFamily: "'DM Sans', sans-serif",
-        position: "relative",
-      }}
-    >
-      {/* ── Sticky header ── */}
+      <div style={{ minHeight: "100vh",
+      background: "#000",
+      fontFamily: "'DM Sans', sans-serif",
+      position: "relative",
+      paddingBottom: 72 }
+      }
+      >
+          {/* ── Sticky header ── */}
       <div
         style={{
           position: "sticky",

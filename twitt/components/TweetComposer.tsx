@@ -92,6 +92,12 @@ const COMPOSER_STYLES = `
     background: linear-gradient(to bottom, rgba(255,255,255,0.12), transparent);
     border-radius: 1px; margin-top: 6px;
   }
+    /* Add inside the existing COMPOSER_STYLES string */
+    @media (max-width: 480px) {
+      .tc-wrap { padding: 10px 12px 8px !important; }
+      .tc-textarea { font-size: 1rem !important; min-height: 80px !important; }
+      .tc-post-btn { height: 32px !important; padding: 0 14px !important; font-size: 0.85rem !important; }
+      }
   @keyframes composerIn {
     from { opacity: 0; transform: translateY(-8px); }
     to   { opacity: 1; transform: translateY(0); }

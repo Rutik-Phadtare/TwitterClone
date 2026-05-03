@@ -5,6 +5,7 @@ import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle } from "lucide-react";
 import LoadingSpinner from "./loading-spinner";
 import { useAuth } from "@/context/AuthContext";
 import TwitterLogo from "./Twitterlogo";
+import Link from "next/link";
 
 /* ─────────────────────────────────────────────────────────────
    Interfaces — unchanged
@@ -665,6 +666,20 @@ export default function AuthModal({
                   </span>
                 )}
               </div>
+
+              <div style={{ textAlign: "right", marginTop: 4 }}>
+              <Link
+               href="/forgot-password"
+               style={{
+                color: "#1d9bf0",
+                fontSize: 13,
+                textDecoration: "none",
+                fontWeight: 500,
+                }}
+                >
+                Forgot password?
+              </Link>
+            </div>
 
               {/* Submit */}
               <button

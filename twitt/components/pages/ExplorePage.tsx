@@ -52,7 +52,7 @@ export default function ExplorePage() {
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 9999, color: "#fff", fontSize: 15, outline: "none",
               fontFamily: "'DM Sans', sans-serif",
-              boxSizing: "border-box",
+              boxSizing: "border-box" as const,
             }}
             onFocus={e => (e.target.style.borderColor = "#1d9bf0")}
             onBlur={e => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}

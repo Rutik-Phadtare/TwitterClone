@@ -194,7 +194,7 @@ export default function SubscriptionPage() {
                     Tweets used
                   </p>
                   <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, margin: 0 }}>
-                    {used}&nbsp;/&nbsp;{limit}
+                    {used}&nbsp;/&nbsp;{limit === -1 ? "∞" : limit}
                   </p>
                 </div>
                 <div style={{ height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 9999 }}>

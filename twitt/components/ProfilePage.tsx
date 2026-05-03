@@ -167,7 +167,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="pp-root" style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif" }}>
+     <div className="pp-root" style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans',sans-serif", paddingBottom: 72 }}>
 
       {/* Sticky Header */}
       <div style={{
