@@ -301,8 +301,10 @@ export default function ProfilePage() {
           style={{
             height: 200,
             background: bannerSrc
-              ? `url(${bannerSrc}) center/cover no-repeat`
-              : "linear-gradient(135deg, #0f1923 0%, #1a2a3a 40%, #0d1b2a 70%, #162032 100%)",
+            ? `url(${bannerSrc}) center/cover no-repeat`
+            : user.banner
+            ? `url(${user.banner}) center/cover no-repeat`
+            : "linear-gradient(135deg, #0f1923 0%, #1a2a3a 40%, #0d1b2a 70%, #162032 100%)",
             position: "relative", overflow: "hidden", cursor: "pointer",
           }}
           onClick={() => bannerInputRef.current?.click()}
@@ -326,7 +328,9 @@ export default function ProfilePage() {
               }}>
                 <Camera size={20} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>Change banner</span>
+             <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
+                {bannerSrc || user.banner ? "Change banner" : "Add banner"}
+              </span>
             </div>
           </div>
         </div>

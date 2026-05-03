@@ -13,36 +13,36 @@ import axios from "axios";
 const Editprofile = ({ isopen, onclose }: any) => {
   const { user, updateProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [formData, setFormdata] = useState({
     displayName: user?.displayName || "",
     bio: user?.bio || "",
     location: "Earth",
     website: "example.com",
     avatar: user?.avatar || "",
+    banner: user?.banner || "",
   });
   const [error, setError] = useState<any>({});
+
   if (!isopen || !user) return null;
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
     if (!formData.displayName.trim()) {
       newErrors.displayName = "Display name is required";
     } else if (formData.displayName.length > 50) {
       newErrors.displayName = "Display name must be 50 characters or less";
     }
-
     if (formData.bio.length > 160) {
       newErrors.bio = "Bio must be 160 characters or less";
     }
-
     if (formData.website && formData.website.length > 100) {
       newErrors.website = "Website must be 100 characters or less";
     }
-
     if (formData.location && formData.location.length > 30) {
       newErrors.location = "Location must be 30 characters or less";
     }
-
     setError(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -50,7 +50,6 @@ const Editprofile = ({ isopen, onclose }: any) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm() || isLoading) return;
-
     setIsLoading(true);
     try {
       await updateProfile(formData);
@@ -69,27 +68,40 @@ const Editprofile = ({ isopen, onclose }: any) => {
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    setIsLoading(true);
-    const image = e.target.files[0];
-    const formdataimg = new FormData();
-    formdataimg.set("image", image);
+  // ── Upload helper (shared by both avatar and banner) ──────────────────────
+  const uploadToImgbb = async (file: File): Promise<string | null> => {
+    const fd = new FormData();
+    fd.set("image", file);
     try {
       const res = await axios.post(
         "https://api.imgbb.com/1/upload?key=118c68781cad7502f590ce9fc6ae87ab",
-        formdataimg,
+        fd,
       );
-      const url = res.data.data.display_url;
-      if (url) {
-        setFormdata((prev) => ({ ...prev, avatar: url }));
-      }
-    } catch (error) {
-      console.log(error);
-    } finally {
-      setIsLoading(false);
+      return res.data.data.display_url ?? null;
+    } catch (err) {
+      console.error(err);
+      return null;
     }
   };
+
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    setAvatarUploading(true);
+    const url = await uploadToImgbb(e.target.files[0]);
+    if (url) setFormdata((prev) => ({ ...prev, avatar: url }));
+    setAvatarUploading(false);
+  };
+
+  // ── Banner upload ─────────────────────────────────────────────────────────
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    setBannerUploading(true);
+    const url = await uploadToImgbb(e.target.files[0]);
+    if (url) setFormdata((prev) => ({ ...prev, banner: url }));
+    setBannerUploading(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-2xl bg-black border-gray-800 text-white max-h-[90vh] overflow-y-auto">
@@ -111,7 +123,7 @@ const Editprofile = ({ isopen, onclose }: any) => {
               type="submit"
               form="edit-profile-form"
               className="bg-white text-black hover:bg-gray-200 font-semibold rounded-full px-6"
-              disabled={isLoading}
+              disabled={isLoading || bannerUploading || avatarUploading}
             >
               {isLoading ? (
                 <div className="flex items-center space-x-2">
@@ -133,25 +145,51 @@ const Editprofile = ({ isopen, onclose }: any) => {
           )}
 
           <form id="edit-profile-form" onSubmit={handleSubmit}>
-            {/* Cover Photo */}
+            {/* ── Banner ── */}
             <div className="relative">
-              <div className="h-48 bg-gradient-to-r from-blue-600 to-purple-600 relative">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-3 rounded-full bg-black/70 hover:bg-black/90"
-                  disabled={isLoading}
+              <div
+                className="h-48 relative overflow-hidden cursor-pointer"
+                style={{
+                  background: formData.banner
+                    ? `url(${formData.banner}) center/cover no-repeat`
+                    : "linear-gradient(135deg, #1a2a3a 0%, #0f1923 50%, #162032 100%)",
+                }}
+                onClick={() => document.getElementById("bannerUpload")?.click()}
+              >
+                {/* Hover overlay */}
+                <div
+                  className="absolute inset-0 flex items-center justify-center transition-opacity duration-200"
+                  style={{ background: "rgba(0,0,0,0.45)" }}
                 >
-                  <Camera className="h-6 w-6 text-white" />
-                </Button>
+                  {bannerUploading ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-white">
+                      <div className="p-3 rounded-full bg-black/60 border border-white/25">
+                        <Camera className="h-6 w-6" />
+                      </div>
+                      <span className="text-xs font-semibold tracking-wide">
+                        {formData.banner ? "Change banner" : "Add banner"}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Profile Picture */}
+              {/* Hidden banner file input */}
+              <input
+                type="file"
+                accept="image/*"
+                id="bannerUpload"
+                className="hidden"
+                onChange={handleBannerUpload}
+              />
+
+              {/* ── Avatar ── */}
               <div className="absolute -bottom-16 left-4">
                 <div className="relative">
                   <Avatar className="h-32 w-32 border-4 border-black">
-                    <AvatarImage src={user?.avatar} alt={user?.displayName} />
+                    <AvatarImage src={formData.avatar || user?.avatar} alt={user?.displayName} />
                     <AvatarFallback className="text-2xl">
                       {user?.displayName?.[0]}
                     </AvatarFallback>
@@ -168,12 +206,14 @@ const Editprofile = ({ isopen, onclose }: any) => {
                     variant="ghost"
                     size="sm"
                     className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-3 rounded-full bg-black/70 hover:bg-black/90"
-                    disabled={isLoading}
-                    onClick={() =>
-                      document.getElementById("avatarUpload")?.click()
-                    }
+                    disabled={avatarUploading}
+                    onClick={() => document.getElementById("avatarUpload")?.click()}
                   >
-                    <Camera className="h-5 w-5 text-white" />
+                    {avatarUploading ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-white" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -182,36 +222,26 @@ const Editprofile = ({ isopen, onclose }: any) => {
             <div className="p-4 mt-16 space-y-6">
               {/* Display Name */}
               <div className="space-y-2">
-                <Label htmlFor="displayName" className="text-white">
-                  Name
-                </Label>
+                <Label htmlFor="displayName" className="text-white">Name</Label>
                 <Input
                   id="displayName"
                   type="text"
                   value={formData.displayName}
-                  onChange={(e) =>
-                    handleInputChange("displayName", e.target.value)
-                  }
+                  onChange={(e) => handleInputChange("displayName", e.target.value)}
                   className="bg-transparent border-gray-600 text-white placeholder-gray-400 focus:border-blue-500"
                   placeholder="Your display name"
                   maxLength={50}
                   disabled={isLoading}
                 />
                 <div className="flex justify-between text-sm">
-                  {error.displayName && (
-                    <p className="text-red-400">{error.displayName}</p>
-                  )}
-                  <p className="text-gray-400 ml-auto">
-                    {formData.displayName.length}/50
-                  </p>
+                  {error.displayName && <p className="text-red-400">{error.displayName}</p>}
+                  <p className="text-gray-400 ml-auto">{formData.displayName.length}/50</p>
                 </div>
               </div>
 
               {/* Bio */}
               <div className="space-y-2">
-                <Label htmlFor="bio" className="text-white">
-                  Bio
-                </Label>
+                <Label htmlFor="bio" className="text-white">Bio</Label>
                 <Textarea
                   id="bio"
                   value={formData.bio}
@@ -223,26 +253,20 @@ const Editprofile = ({ isopen, onclose }: any) => {
                 />
                 <div className="flex justify-between text-sm">
                   {error.bio && <p className="text-red-400">{error.bio}</p>}
-                  <p className="text-gray-400 ml-auto">
-                    {formData.bio.length}/160
-                  </p>
+                  <p className="text-gray-400 ml-auto">{formData.bio.length}/160</p>
                 </div>
               </div>
 
               {/* Location */}
               <div className="space-y-2">
-                <Label htmlFor="location" className="text-white">
-                  Location
-                </Label>
+                <Label htmlFor="location" className="text-white">Location</Label>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <Input
                     id="location"
                     type="text"
                     value={formData.location}
-                    onChange={(e) =>
-                      handleInputChange("location", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("location", e.target.value)}
                     className="pl-10 bg-transparent border-gray-600 text-white placeholder-gray-400 focus:border-blue-500"
                     placeholder="Where are you located?"
                     maxLength={30}
@@ -250,29 +274,21 @@ const Editprofile = ({ isopen, onclose }: any) => {
                   />
                 </div>
                 <div className="flex justify-between text-sm">
-                  {error.location && (
-                    <p className="text-red-400">{error.location}</p>
-                  )}
-                  <p className="text-gray-400 ml-auto">
-                    {formData.location.length}/30
-                  </p>
+                  {error.location && <p className="text-red-400">{error.location}</p>}
+                  <p className="text-gray-400 ml-auto">{formData.location.length}/30</p>
                 </div>
               </div>
 
               {/* Website */}
               <div className="space-y-2">
-                <Label htmlFor="website" className="text-white">
-                  Website
-                </Label>
+                <Label htmlFor="website" className="text-white">Website</Label>
                 <div className="relative">
                   <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <Input
                     id="website"
                     type="text"
                     value={formData.website}
-                    onChange={(e) =>
-                      handleInputChange("website", e.target.value)
-                    }
+                    onChange={(e) => handleInputChange("website", e.target.value)}
                     className="pl-10 bg-transparent border-gray-600 text-white placeholder-gray-400 focus:border-blue-500"
                     placeholder="Your website URL"
                     maxLength={100}
@@ -280,12 +296,8 @@ const Editprofile = ({ isopen, onclose }: any) => {
                   />
                 </div>
                 <div className="flex justify-between text-sm">
-                  {error.website && (
-                    <p className="text-red-400">{error.website}</p>
-                  )}
-                  <p className="text-gray-400 ml-auto">
-                    {formData.website.length}/100
-                  </p>
+                  {error.website && <p className="text-red-400">{error.website}</p>}
+                  <p className="text-gray-400 ml-auto">{formData.website.length}/100</p>
                 </div>
               </div>
             </div>

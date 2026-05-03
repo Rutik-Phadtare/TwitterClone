@@ -17,6 +17,7 @@ interface User {
   username: string;
   displayName: string;
   avatar: string;
+  banner: string;
   bio?: string;
   joinedDate: string;
   email: string;
@@ -212,6 +213,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username:    firebaseUser.email.split("@")[0],
           displayName: firebaseUser.displayName || "User",
           avatar:      firebaseUser.photoURL    || DEFAULT_AVATAR,
+          banner:      firebaseUser.photoURL    || DEFAULT_AVATAR,
           email:       firebaseUser.email,
         });
         userData = res.data;
