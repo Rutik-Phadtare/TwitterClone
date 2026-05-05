@@ -405,7 +405,12 @@ app.post("/verify-otp", verifyToken, async (req, res) => {
             await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
 
             // Chrome = OTP required. Microsoft = free pass. Everything else = no OTP.
-            const requiresOtp = browserLower.includes("chrome") && !isMicrosoft;
+            const isChromium = (
+              browserLower.includes("chrome") ||
+              browserLower.includes("chromium")
+            ) && !isMicrosoft;
+
+const requiresOtp = isChromium;
 
             return res.json({ requiresOtp, browser, os, device: deviceType, isMicrosoft });
           } catch (error) {

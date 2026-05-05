@@ -98,25 +98,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ── Record login event + trigger OTP modal if Chrome ─────────────────────
-  const recordLogin = async () => {
-    try {
-      const res = await axiosInstance.post("/login-event");
-      if (res.data.requiresOtp) {
+// FIND the recordLogin function and replace entirely:
+const recordLogin = async () => {
+  // Wait up to 3s for Firebase auth to fully settle before calling backend
+  let attempts = 0;
+  while (!auth.currentUser && attempts < 6) {
+    await new Promise(res => setTimeout(res, 500));
+    attempts++;
+  }
+
+  if (!auth.currentUser) {
+    console.warn("[AuthContext] recordLogin: no Firebase user after waiting, skipping");
+    return;
+  }
+
+  try {
+    const res = await axiosInstance.post("/login-event");
+        console.log("[AuthContext] login-event response:", {
+      browser:     res.data.browser,
+      device:      res.data.device,
+      requiresOtp: res.data.requiresOtp,
+      isMicrosoft: res.data.isMicrosoft,
+    });
+
+    if (res.data.requiresOtp) {
+      // Send OTP email then show modal
+      try {
         await axiosInstance.post("/send-otp");
         setRequiresOtp(true);
-        setShowOtpModal(true); // ← show modal
-      }
-    } catch (err: any) {
-      if (err.response?.status === 403) {
-        await signOut(auth);
-        setUser(null);
-        persistUser(null);
-        alert(err.response.data.error);
-      } else {
-        console.error("[AuthContext] Login event error:", err);
+        setShowOtpModal(true);
+      } catch (otpErr: any) {
+        console.error("[AuthContext] Failed to send OTP:", otpErr);
+        // Still show modal — user can retry resend from within it
+        setRequiresOtp(true);
+        setShowOtpModal(true);
       }
     }
-  };
+  } catch (err: any) {
+    const status = err.response?.status;
+    const msg    = err.response?.data?.error;
+
+    if (status === 403) {
+      // Mobile time restriction — log out and alert
+      await signOut(auth);
+      setUser(null);
+      persistUser(null);
+      alert(msg || "Login not allowed at this time.");
+    } else if (status === 401) {
+      // Token still not ready — try once more after delay
+      console.warn("[AuthContext] 401 on login-event, retrying once...");
+      await new Promise(res => setTimeout(res, 1500));
+      try {
+        const retry = await axiosInstance.post("/login-event");
+        if (retry.data.requiresOtp) {
+          await axiosInstance.post("/send-otp");
+          setRequiresOtp(true);
+          setShowOtpModal(true);
+        }
+      } catch (retryErr) {
+        console.error("[AuthContext] Login event retry also failed:", retryErr);
+      }
+    } else {
+      console.error("[AuthContext] Login event error:", err);
+    }
+  }
+};
 
   const clearOtpRequirement = () => setRequiresOtp(false);
   const dismissOtpModal     = () => {
