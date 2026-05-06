@@ -335,6 +335,8 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post("/send-otp", verifyToken, async (req, res) => {
+  console.log("EMAIL_USER configured:", !!process.env.EMAIL_USER);
+  console.log("EMAIL_PASS configured:", !!process.env.EMAIL_PASS);
   try {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore.set(req.user.email, { otp, expires: Date.now() + 10 * 60 * 1000 });
