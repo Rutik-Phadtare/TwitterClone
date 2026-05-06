@@ -122,18 +122,16 @@ const recordLogin = async () => {
     });
 
     if (res.data.requiresOtp) {
-      // Send OTP email then show modal
-      try {
-        await axiosInstance.post("/send-otp");
-        setRequiresOtp(true);
-        setShowOtpModal(true);
-      } catch (otpErr: any) {
-        console.error("[AuthContext] Failed to send OTP:", otpErr);
-        // Still show modal — user can retry resend from within it
-        setRequiresOtp(true);
-        setShowOtpModal(true);
-      }
-    }
+  // Show modal immediately — don't wait for email to succeed
+  setRequiresOtp(true);
+  setShowOtpModal(true);
+
+  // Send OTP in background — modal has its own resend button if this fails
+  axiosInstance.post("/send-otp").catch((otpErr) => {
+    console.error("[AuthContext] /send-otp failed:", otpErr?.response?.data || otpErr.message);
+    // Modal is already open — user can click Resend inside it
+  });
+}
   } catch (err: any) {
     const status = err.response?.status;
     const msg    = err.response?.data?.error;
