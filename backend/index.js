@@ -7,7 +7,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
+const resend = new Resend(process.env.RESEND_API_KEY);
 import Razorpay from "razorpay";
 import { UAParser } from "ua-parser-js";
 
@@ -31,25 +32,25 @@ const razorpay = new Razorpay({
 });
 
 // ── Nodemailer — verify config on startup ─────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host:   "smtp.gmail.com",
-  port:   587,
-  secure: false,
-  family: 4,  // ← force IPv4 — Render free tier blocks IPv6 outbound
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: { rejectUnauthorized: false },
-});
+// const transporter = nodemailer.createTransport({
+//   host:   "smtp.gmail.com",
+//   port:   587,
+//   secure: false,
+//   family: 4,  // ← force IPv4 — Render free tier blocks IPv6 outbound
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+//   tls: { rejectUnauthorized: false },
+// });
 
-transporter.verify((error) => {
-  if (error) {
-    console.error("❌ Nodemailer config error:", error.message);
-  } else {
-    console.log("✅ Nodemailer ready — emails will send");
-  }
-});
+// transporter.verify((error) => {
+//   if (error) {
+//     console.error("❌ Nodemailer config error:", error.message);
+//   } else {
+//     console.log("✅ Nodemailer ready — emails will send");
+//   }
+// });
 
 const upload      = multer();
 const audioUpload = multer({ limits: { fileSize: 100 * 1024 * 1024 } });
@@ -336,18 +337,18 @@ app.post("/send-otp", verifyToken, async (req, res) => {
       createdAt: Date.now(),
     });
 
-    await transporter.sendMail({
-      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
-      to:      req.user.email,
-      subject: "Your Twiller verification code",
-      html: `
-        <div style="font-family:sans-serif;max-width:400px;padding:24px;background:#f9f9f9;border-radius:12px">
-          <h2 style="color:#1d9bf0;margin:0 0 16px">Twiller — Verify your login</h2>
-          <p style="color:#333;margin:0 0 8px">Your one-time verification code:</p>
-          <div style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#000;padding:20px 0;text-align:center">${otp}</div>
-          <p style="color:#888;font-size:13px;margin:16px 0 0">This code expires in 10 minutes.<br>If you didn't request this, ignore this email.</p>
-        </div>`,
-    });
+    await resend.emails.send({
+  from:    "Twiller <onboarding@resend.dev>",
+  to:      req.user.email,
+  subject: "Your Twiller verification code",
+  html: `
+    <div style="font-family:sans-serif;max-width:400px;padding:24px;background:#f9f9f9;border-radius:12px">
+      <h2 style="color:#1d9bf0;margin:0 0 16px">Twiller — Verify your login</h2>
+      <p style="color:#333;margin:0 0 8px">Your one-time verification code:</p>
+      <div style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#000;padding:20px 0;text-align:center">${otp}</div>
+      <p style="color:#888;font-size:13px;margin:16px 0 0">Expires in 10 minutes. Do not share this code.</p>
+    </div>`,
+});
 
     console.log("✅ OTP sent successfully to", req.user.email);
     return res.json({ message: "OTP sent to your email" });
@@ -488,22 +489,22 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    await transporter.sendMail({
-      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
-      to:      user.email,
-      subject: "Twiller — Subscription Invoice",
-      html: `
-        <div style="font-family:sans-serif;max-width:500px;padding:24px">
-          <h1 style="color:#1d9bf0">Twiller</h1>
-          <h2>Thank you for subscribing! 🎉</h2>
-          <table style="border-collapse:collapse;width:100%">
-            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
-          </table>
-        </div>`,
-    });
+    await resend.emails.send({
+  from:    "Twiller <onboarding@resend.dev>",
+  to:      user.email,
+  subject: "Twiller — Subscription Invoice",
+  html: `
+    <div style="font-family:sans-serif;max-width:500px;padding:24px">
+      <h1 style="color:#1d9bf0">Twiller</h1>
+      <h2>Thank you for subscribing! 🎉</h2>
+      <table style="border-collapse:collapse;width:100%">
+        <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
+        <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
+        <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
+        <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
+      </table>
+    </div>`,
+});
 
     return res.json({ message: "Payment verified and subscription activated", plan });
   } catch (error) {
