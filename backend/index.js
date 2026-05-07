@@ -35,6 +35,7 @@ const transporter = nodemailer.createTransport({
   host:   "smtp.gmail.com",
   port:   587,
   secure: false,
+  family: 4,  // ← force IPv4 — Render free tier blocks IPv6 outbound
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -70,11 +71,12 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
-    }
+    if (!origin) return callback(null, true);
+    // Allow exact matches
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow ALL Vercel preview deployments for this project
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
 }));
