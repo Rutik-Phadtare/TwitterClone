@@ -8,7 +8,7 @@ import {
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { auth } from "./firebase";
 import axiosInstance from "../lib/axiosInstance";
 
@@ -69,10 +69,11 @@ const readCachedUser = (): User | null => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser]               = useState<User | null>(readCachedUser);
-  const [isLoading, setIsLoading]     = useState(true);
-  const [requiresOtp, setRequiresOtp] = useState(false);
-  const [showOtpModal, setShowOtpModal] = useState(false); // ← NEW
+  const [user, setUser]                   = useState<User | null>(readCachedUser);
+  const [isLoading, setIsLoading]         = useState(true);
+  const [requiresOtp, setRequiresOtp]     = useState(false);
+  const [showOtpModal, setShowOtpModal]   = useState(false);
+  const recordLoginCalledRef              = useRef(false); // ← prevents duplicate calls
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -98,69 +99,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // ── Record login event + trigger OTP modal if Chrome ─────────────────────
-// FIND the recordLogin function and replace entirely:
-const recordLogin = async () => {
-  // Wait up to 3s for Firebase auth to fully settle before calling backend
-  let attempts = 0;
-  while (!auth.currentUser && attempts < 6) {
-    await new Promise(res => setTimeout(res, 500));
-    attempts++;
-  }
-
-  if (!auth.currentUser) {
-    console.warn("[AuthContext] recordLogin: no Firebase user after waiting, skipping");
-    return;
-  }
-
-  try {
-    const res = await axiosInstance.post("/login-event");
-        console.log("[AuthContext] login-event response:", {
-      browser:     res.data.browser,
-      device:      res.data.device,
-      requiresOtp: res.data.requiresOtp,
-      isMicrosoft: res.data.isMicrosoft,
-    });
-
-    if (res.data.requiresOtp) {
-  // Show modal immediately — don't wait for email to succeed
-  setRequiresOtp(true);
-  setShowOtpModal(true);
-
-  // Send OTP in background — modal has its own resend button if this fails
-  axiosInstance.post("/send-otp").catch((otpErr) => {
-    console.error("[AuthContext] /send-otp failed:", otpErr?.response?.data || otpErr.message);
-    // Modal is already open — user can click Resend inside it
-  });
-}
-  } catch (err: any) {
-    const status = err.response?.status;
-    const msg    = err.response?.data?.error;
-
-    if (status === 403) {
-      // Mobile time restriction — log out and alert
-      await signOut(auth);
-      setUser(null);
-      persistUser(null);
-      alert(msg || "Login not allowed at this time.");
-    } else if (status === 401) {
-      // Token still not ready — try once more after delay
-      console.warn("[AuthContext] 401 on login-event, retrying once...");
-      await new Promise(res => setTimeout(res, 1500));
-      try {
-        const retry = await axiosInstance.post("/login-event");
-        if (retry.data.requiresOtp) {
-          await axiosInstance.post("/send-otp");
-          setRequiresOtp(true);
-          setShowOtpModal(true);
-        }
-      } catch (retryErr) {
-        console.error("[AuthContext] Login event retry also failed:", retryErr);
-      }
-    } else {
-      console.error("[AuthContext] Login event error:", err);
+  const recordLogin = async () => {
+    // Guard: prevent multiple simultaneous calls
+    if (recordLoginCalledRef.current) {
+      console.log("[AuthContext] recordLogin already in progress, skipping");
+      return;
     }
-  }
-};
+    recordLoginCalledRef.current = true;
+
+    // Wait for Firebase token to be fully ready (up to 3s)
+    let attempts = 0;
+    while (!auth.currentUser && attempts < 6) {
+      await new Promise(res => setTimeout(res, 500));
+      attempts++;
+    }
+
+    if (!auth.currentUser) {
+      console.warn("[AuthContext] recordLogin: no Firebase user after waiting, skipping");
+      recordLoginCalledRef.current = false;
+      return;
+    }
+
+    try {
+      const res = await axiosInstance.post("/login-event");
+      console.log("[AuthContext] login-event response:", {
+        browser:     res.data.browser,
+        device:      res.data.device,
+        requiresOtp: res.data.requiresOtp,
+        isMicrosoft: res.data.isMicrosoft,
+      });
+
+      if (res.data.requiresOtp) {
+        // Show modal immediately — don't block on email send
+        setRequiresOtp(true);
+        setShowOtpModal(true);
+
+        // Send OTP email in background
+        axiosInstance.post("/send-otp").catch((otpErr) => {
+          console.error("[AuthContext] /send-otp failed:", otpErr?.response?.data || otpErr.message);
+          // Modal is already open — user can use the Resend button inside it
+        });
+      }
+    } catch (err: any) {
+      const status = err.response?.status;
+      const msg    = err.response?.data?.error;
+
+      if (status === 403) {
+        // Mobile time restriction — sign out and alert
+        await signOut(auth);
+        setUser(null);
+        persistUser(null);
+        alert(msg || "Login not allowed at this time.");
+      } else if (status === 401) {
+        // Token race condition — retry once after delay
+        console.warn("[AuthContext] 401 on login-event, retrying in 2s...");
+        await new Promise(res => setTimeout(res, 2000));
+        try {
+          const retry = await axiosInstance.post("/login-event");
+          if (retry.data.requiresOtp) {
+            setRequiresOtp(true);
+            setShowOtpModal(true);
+            axiosInstance.post("/send-otp").catch(console.error);
+          }
+        } catch (retryErr) {
+          console.error("[AuthContext] login-event retry failed:", retryErr);
+        }
+      } else {
+        console.error("[AuthContext] Login event error:", err);
+      }
+    } finally {
+      // Reset guard after 5s so next login session can fire
+      setTimeout(() => { recordLoginCalledRef.current = false; }, 5000);
+    }
+  };
 
   const clearOtpRequirement = () => setRequiresOtp(false);
   const dismissOtpModal     = () => {
@@ -211,6 +222,7 @@ const recordLogin = async () => {
     setRequiresOtp(false);
     setShowOtpModal(false);
     persistUser(null);
+    recordLoginCalledRef.current = false; // reset guard on logout
     await signOut(auth);
   };
 
