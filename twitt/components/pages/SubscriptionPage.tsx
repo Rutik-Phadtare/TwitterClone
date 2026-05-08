@@ -77,28 +77,26 @@ const handleSubscribe = async (planId: string) => {
   setPaying(planId);
   setTimeError("");
 
-  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-
   try {
     const orderRes = await axiosInstance.post("/create-order", { plan: planId });
-    const { amount } = orderRes.data;
+    const { orderId, amount } = orderRes.data;
 
-    if (isDemo) {
-      // Show our fake Razorpay-style popup
-      setPaying(null);
-      setDemoModal({ open: true, planId, amount });
-      return;
-    }
+    const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-    // Real Razorpay flow (works on localhost)
+    // Track if real payment succeeded (handler was called)
+    let paymentSucceeded = false;
+
     const options = {
       key:         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
       amount,
       currency:    "INR",
       name:        "Twiller",
       description: `${planId.charAt(0).toUpperCase() + planId.slice(1)} Plan`,
-      order_id:    orderRes.data.orderId,
+      order_id:    orderId,
+
       handler: async (response: any) => {
+        // Real payment succeeded (localhost) ✅
+        paymentSucceeded = true;
         try {
           await axiosInstance.post("/verify-payment", {
             razorpay_order_id:   response.razorpay_order_id,
@@ -113,11 +111,24 @@ const handleSubscribe = async (planId: string) => {
           alert("Payment verification failed. Contact support.");
         }
       },
+
+      modal: {
+        ondismiss: () => {
+          // Razorpay modal closed — if payment never succeeded AND demo mode is on,
+          // show our fallback popup automatically
+          if (!paymentSucceeded && isDemo) {
+            setDemoModal({ open: true, planId, amount });
+          }
+        },
+      },
+
       prefill: { email: "" },
       theme:   { color: "#1d9bf0" },
     };
+
     const rzp = new window.Razorpay(options);
     rzp.open();
+
   } catch (err: any) {
     const msg = err.response?.data?.error;
     setTimeError(msg || "Something went wrong. Please try again.");
