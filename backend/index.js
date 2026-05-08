@@ -215,16 +215,30 @@ app.get("/post", async (req, res) => {
   }
 });
 
-app.delete("/post/:id", verifyToken, async (req, res) => {
+app.patch("/post/:id", verifyToken, async (req, res) => {
   try {
+    const content = (req.body.content || "").trim();
+    if (!content)          return res.status(400).send({ error: "Content cannot be empty" });
+    if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
+ 
     const dbUser = await User.findOne({ email: req.user.email });
-    const tweet  = await Tweet.findById(req.params.id);
-    if (!tweet)   return res.status(404).send({ error: "Tweet not found" });
+    if (!dbUser) return res.status(404).send({ error: "User not found" });
+ 
+    const tweet = await Tweet.findById(req.params.id);
+    if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+ 
+    // Only the author may edit their own tweet
     if (tweet.author.toString() !== dbUser._id.toString())
-      return res.status(403).send({ error: "Forbidden" });
-    await Tweet.findByIdAndDelete(req.params.id);
-    return res.status(200).send({ message: "Tweet deleted" });
+      return res.status(403).send({ error: "Forbidden — you can only edit your own tweets" });
+ 
+    tweet.content = content;
+    tweet.edited  = true;          // marks the tweet as edited (see schema note below)
+    await tweet.save();
+ 
+    const populated = await tweet.populate("author");
+    return res.status(200).send(populated);
   } catch (error) {
+    console.error("🔴 PATCH /post/:id error:", error.message);
     return res.status(400).send({ error: error.message });
   }
 });
@@ -461,6 +475,51 @@ app.post("/create-order", verifyToken, async (req, res) => {
       receipt:  `receipt_${Date.now()}`,
     });
     return res.json({ orderId: order.id, amount: plan.price });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// ── DEMO MODE: bypasses Razorpay signature for deployed demo ──────────────────
+app.post("/demo-payment", verifyToken, async (req, res) => {
+  if (process.env.DEMO_MODE !== "true")
+    return res.status(403).json({ error: "Demo mode not enabled" });
+
+  try {
+    const { plan } = req.body;
+    const planData = PLANS[plan];
+    if (!planData) return res.status(400).json({ error: "Invalid plan" });
+
+    const user      = await User.findOne({ email: req.user.email });
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const fakePid   = `demo_pay_${Date.now()}`;
+
+    await Subscription.findOneAndUpdate(
+      { userId: user._id },
+      { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
+      { upsert: true, new: true }
+    );
+
+    // Send invoice email same as real payment
+    await resend.emails.send({
+      from:    "Twiller <onboarding@resend.dev>",
+      to:      user.email,
+      subject: "Twiller — Subscription Invoice (Demo)",
+      html: `
+        <div style="font-family:sans-serif;max-width:500px;padding:24px">
+          <h1 style="color:#1d9bf0">Twiller</h1>
+          <h2>Thank you for subscribing! 🎉</h2>
+          <p style="color:#888">(Demo mode — no real money charged)</p>
+          <table style="border-collapse:collapse;width:100%">
+            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${fakePid}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
+          </table>
+        </div>`,
+    });
+
+    return res.json({ message: "Demo payment successful", plan, paymentId: fakePid });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

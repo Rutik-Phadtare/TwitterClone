@@ -1,21 +1,44 @@
 export const TRIGGER_KEYWORDS = ["cricket", "science"];
 
+// Request browser notification permission
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (!("Notification" in window)) return false;
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
   const result = await Notification.requestPermission();
   return result === "granted";
 };
 
-export const sendTweetNotification = (content: string) => {
-  if (Notification.permission !== "granted") return;
-  const pref = localStorage.getItem("notifications-enabled");
-  if (pref === "false") return;
+// Check if notifications are enabled by user preference
+export const areNotificationsEnabled = (): boolean => {
+  if (typeof window === "undefined") return false;
+  if (Notification.permission !== "granted") return false;
+  return localStorage.getItem("twiller-notifications-enabled") !== "false";
+};
+
+// Send notification if tweet contains trigger keywords
+export const sendTweetNotification = (content: string, author: string) => {
+  if (!areNotificationsEnabled()) return;
+  if (!content) return;
+
   const lower = content.toLowerCase();
-  const matched = TRIGGER_KEYWORDS.find(k => lower.includes(k));
+  const matched = TRIGGER_KEYWORDS.find(k => lower.includes(k.toLowerCase()));
   if (!matched) return;
-  new Notification("Trending tweet", {
-    body: content.slice(0, 120),
+
+  const notification = new Notification(`🔔 Trending: ${matched}`, {
+    body: `${author}: ${content.slice(0, 120)}${content.length > 120 ? "…" : ""}`,
     icon: "/favicon.ico",
-    tag: `tweet-${Date.now()}`,
+    badge: "/favicon.ico",
+    tag: `tweet-${matched}-${Date.now()}`,
+    requireInteraction: false,
   });
+
+  // Auto-close after 5 seconds
+  setTimeout(() => notification.close(), 5000);
+
+  // Click navigates to app
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+  };
 };

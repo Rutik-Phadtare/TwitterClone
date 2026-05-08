@@ -83,7 +83,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     }
     .pp-tweet-row:hover { background: rgba(255,255,255,0.018); }
 
-    /* Dropdown styles (reuse sidebar pattern) */
     .pp-dropdown-content {
       background: #16181c !important;
       border: 1px solid rgba(255,255,255,0.1) !important;
@@ -200,6 +199,27 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
+  // ── Tweet mutation handlers ────────────────────────────────────────────────
+  /**
+   * Remove the tweet from local state instantly so the card animates out
+   * without needing a full refetch.
+   */
+  const handleTweetDeleted = (tweetId: string) => {
+    setTweets(prev => prev.filter(t => t._id?.toString() !== tweetId));
+  };
+
+  /**
+   * Patch the tweet in local state so the edited content shows immediately
+   * everywhere (home feed uses the same state if lifted, but on profile page
+   * this keeps the profile list in sync).
+   */
+  const handleTweetEdited = (updatedTweet: any) => {
+    setTweets(prev =>
+      prev.map(t => t._id?.toString() === updatedTweet._id?.toString() ? updatedTweet : t)
+    );
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   <NotificationToggle />
   const TABS = [
     { value: "posts",      label: "Posts" },
@@ -244,7 +264,6 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          {/* ── More / Logout dropdown in header ── */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -328,7 +347,7 @@ export default function ProfilePage() {
               }}>
                 <Camera size={20} />
               </div>
-             <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
                 {bannerSrc || user.banner ? "Change banner" : "Add banner"}
               </span>
             </div>
@@ -439,7 +458,11 @@ export default function ProfilePage() {
             ) : (
               userTweets.map((tweet: any, idx: number) => (
                 <div key={tweet._id} className="pp-tweet-item pp-tweet-row" style={{ animationDelay: `${Math.min(idx * 0.04, 0.3)}s` }}>
-                  <TweetCard tweet={tweet} />
+                  <TweetCard
+                    tweet={tweet}
+                    onDelete={handleTweetDeleted}
+                    onEdit={handleTweetEdited}
+                  />
                 </div>
               ))
             )}

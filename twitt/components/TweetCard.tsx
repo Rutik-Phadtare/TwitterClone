@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Heart,
   MessageCircle,
@@ -9,10 +8,16 @@ import {
   Share,
   MoreHorizontal,
   Bookmark,
-  Mic,          // ← NEW: for audio tweet badge
-  Play,         // ← NEW
-  Pause,        // ← NEW
+  Mic,
+  Play,
+  Pause,
+  Pencil,
+  Trash2,
+  Check,
+  X as XIcon,
+  AlertTriangle,
 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { useAuth } from "@/context/AuthContext";
 import axiosInstance from "@/lib/axiosInstance";
 import { sendTweetNotification } from "@/lib/notificationUtils";
@@ -26,7 +31,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
 
-    /* ── Keyframes ── */
     @keyframes tc-heartPop {
       0%   { transform: scale(1); }
       20%  { transform: scale(1.55) rotate(-10deg); }
@@ -67,10 +71,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       20%     { transform: translateX(-3px) rotate(-10deg); }
       60%     { transform: translateX(3px) rotate(10deg); }
     }
-    @keyframes tc-avatarGlow {
-      0%,100% { box-shadow: 0 0 0 0 rgba(29,155,240,0); }
-      50%     { box-shadow: 0 0 0 4px rgba(29,155,240,0.2); }
-    }
     @keyframes tc-slideIn {
       from { opacity: 0; transform: translateY(10px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -81,22 +81,30 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       60%  { transform: translateY(1px) scale(0.92); }
       100% { transform: translateY(0) scale(1); }
     }
-    @keyframes tc-shimmer {
-      0%   { background-position: -400px 0; }
-      100% { background-position: 400px 0; }
-    }
-    @keyframes tc-dot-pulse {
-      0%,100% { opacity: 0.3; transform: scale(1); }
-      50%     { opacity: 1; transform: scale(1.4); }
-    }
-
-    /* ── NEW: audio waveform bars pulse while playing ── */
     @keyframes tc-wave-bar {
       0%,100% { transform: scaleY(0.4); }
       50%     { transform: scaleY(1); }
     }
+    @keyframes tc-deleteShake {
+      0%,100% { transform: translateX(0); }
+      20%     { transform: translateX(-4px); }
+      40%     { transform: translateX(4px); }
+      60%     { transform: translateX(-3px); }
+      80%     { transform: translateX(2px); }
+    }
+    @keyframes tc-editExpand {
+      from { opacity: 0; transform: scaleY(0.94); transform-origin: top; }
+      to   { opacity: 1; transform: scaleY(1); }
+    }
+    @keyframes tc-confirmIn {
+      from { opacity: 0; transform: scale(0.92) translateY(4px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes tc-fadeOut {
+      from { opacity: 1; transform: translateY(0) scale(1); max-height: 300px; }
+      to   { opacity: 0; transform: translateY(-8px) scale(0.98); max-height: 0; padding: 0; }
+    }
 
-    /* ── Card ── */
     .tc-card {
       font-family: 'DM Sans', sans-serif;
       background: #000;
@@ -106,24 +114,26 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       cursor: pointer;
       transition: background 0.22s ease;
       position: relative;
+      /* Default z-index keeps cards in normal flow */
+      z-index: 0;
       animation: tc-slideIn 0.32s cubic-bezier(0.22,1,0.36,1) both;
     }
     .tc-card:hover { background: rgba(255,255,255,0.022); }
     .tc-card:hover .tc-more-btn { opacity: 1; }
-
     .tc-card::before {
       content: '';
-      position: absolute;
-      left: 0; top: 20%; bottom: 20%;
+      position: absolute; left: 0; top: 20%; bottom: 20%;
       width: 2.5px;
       background: linear-gradient(to bottom, transparent, #1d9bf0, transparent);
-      border-radius: 0 2px 2px 0;
-      opacity: 0;
-      transition: opacity 0.25s ease;
+      border-radius: 0 2px 2px 0; opacity: 0; transition: opacity 0.25s ease;
     }
     .tc-card:hover::before { opacity: 0.6; }
+    .tc-card.is-deleting { animation: tc-fadeOut 0.4s ease forwards; pointer-events: none; overflow: hidden; }
+    .tc-card.is-editing { cursor: default; }
+    .tc-card.is-editing::before { opacity: 0 !important; }
+    /* Lift the card whose menu is open above all siblings */
+    .tc-card.menu-open { z-index: 100; }
 
-    /* ── Avatar ── */
     .tc-avatar-wrap { position: relative; flex-shrink: 0; margin-top: 2px; }
     .tc-avatar-ring {
       position: absolute; inset: -3px; border-radius: 50%;
@@ -131,18 +141,15 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       opacity: 0; transition: opacity 0.28s ease; z-index: 0;
     }
     .tc-avatar-ring::after {
-      content: ''; position: absolute; inset: 2px; border-radius: 50%;
-      background: #000; z-index: 1;
+      content: ''; position: absolute; inset: 2px; border-radius: 50%; background: #000; z-index: 1;
     }
     .tc-card:hover .tc-avatar-ring { opacity: 1; }
     .tc-avatar-inner {
       position: relative; z-index: 2; border-radius: 50%;
-      overflow: hidden; width: 44px; height: 44px;
-      transition: transform 0.22s ease;
+      overflow: hidden; width: 44px; height: 44px; transition: transform 0.22s ease;
     }
     .tc-card:hover .tc-avatar-inner { transform: scale(1.04); }
 
-    /* ── Header row ── */
     .tc-header { display: flex; align-items: flex-start; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
     .tc-display-name {
       color: #fff; font-weight: 700; font-size: 15px;
@@ -156,13 +163,18 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     .tc-username  { color: rgba(255,255,255,0.38); font-size: 14px; font-weight: 400; }
     .tc-dot       { color: rgba(255,255,255,0.25); font-size: 14px; }
     .tc-timestamp { color: rgba(255,255,255,0.32); font-size: 13px; }
-    .tc-verified  {
+    .tc-edited-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 500;
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 9999px;
+      padding: 1px 7px; margin-left: 2px;
+    }
+    .tc-verified {
       display: inline-flex; align-items: center; justify-content: center;
       width: 17px; height: 17px; border-radius: 50%; background: #1d9bf0;
       flex-shrink: 0; margin-top: 1px; box-shadow: 0 0 6px rgba(29,155,240,0.5);
     }
 
-    /* ── More button ── */
     .tc-more-btn {
       margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: none;
       background: transparent; color: rgba(255,255,255,0.35);
@@ -173,12 +185,12 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     }
     .tc-more-btn:hover { background: rgba(29,155,240,0.12); color: #1d9bf0; transform: rotate(90deg); }
 
-    /* ── More menu ── */
     .tc-more-menu {
       position: absolute; top: 44px; right: 16px; background: #16181c;
       border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 6px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04);
-      z-index: 50; min-width: 190px;
+      /* 9999 ensures the menu always floats above every sibling card */
+      z-index: 9999; min-width: 190px;
       animation: tc-moreMenuPop 0.22s cubic-bezier(0.22,1,0.36,1) both;
     }
     .tc-more-menu-item {
@@ -189,14 +201,95 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       transition: background 0.14s ease, color 0.14s ease, padding-left 0.14s ease;
     }
     .tc-more-menu-item:hover { background: rgba(255,255,255,0.07); padding-left: 18px; }
+    .tc-more-menu-item.tc-danger { color: #f4212e; }
+    .tc-more-menu-item.tc-danger:hover { background: rgba(244,33,46,0.1); padding-left: 18px; }
+    .tc-more-menu-sep { height: 1px; background: rgba(255,255,255,0.07); margin: 4px 0; }
 
-    /* ── Content ── */
+    /* ── Inline edit area ── */
+    .tc-edit-area {
+      animation: tc-editExpand 0.22s cubic-bezier(0.22,1,0.36,1) both;
+      background: rgba(29,155,240,0.04);
+      border: 1px solid rgba(29,155,240,0.25);
+      border-radius: 14px; padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .tc-edit-textarea {
+      width: 100%; background: transparent; border: none; outline: none;
+      resize: none; color: #fff; font-family: 'DM Sans', sans-serif;
+      font-size: 15px; line-height: 1.65; caret-color: #1d9bf0;
+    }
+    .tc-edit-footer {
+      display: flex; align-items: center; justify-content: space-between; margin-top: 10px;
+    }
+    .tc-edit-count { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .tc-edit-actions { display: flex; align-items: center; gap: 8px; }
+    .tc-edit-cancel-btn {
+      height: 32px; padding: 0 14px; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.2);
+      background: transparent; color: rgba(255,255,255,0.7);
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s, transform 0.12s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .tc-edit-cancel-btn:hover { background: rgba(255,255,255,0.07); transform: scale(1.02); }
+    .tc-edit-save-btn {
+      height: 32px; padding: 0 16px; border-radius: 9999px; border: none;
+      background: #1d9bf0; color: #fff;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: transform 0.12s, box-shadow 0.15s, opacity 0.15s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .tc-edit-save-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29,155,240,0.4); }
+    .tc-edit-save-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    /* ── Delete confirm overlay ── */
+    .tc-delete-confirm {
+      animation: tc-confirmIn 0.22s cubic-bezier(0.22,1,0.36,1) both;
+      position: absolute; inset: 0; z-index: 60; border-radius: 0;
+      background: rgba(0,0,0,0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+      padding: 24px;
+    }
+    .tc-delete-confirm-box {
+      text-align: center; max-width: 300px;
+    }
+    .tc-delete-icon-wrap {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(244,33,46,0.12); border: 1px solid rgba(244,33,46,0.25);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 14px;
+      animation: tc-deleteShake 0.4s 0.1s ease both;
+    }
+    .tc-delete-title {
+      color: #fff; font-family: 'DM Sans', sans-serif;
+      font-weight: 800; font-size: 17px; margin: 0 0 6px; letter-spacing: -0.2px;
+    }
+    .tc-delete-sub {
+      color: rgba(255,255,255,0.45); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; margin: 0 0 18px; line-height: 1.5;
+    }
+    .tc-delete-buttons { display: flex; gap: 10px; justify-content: center; }
+    .tc-delete-cancel {
+      height: 36px; padding: 0 20px; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.2);
+      background: transparent; color: rgba(255,255,255,0.8);
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: background 0.14s;
+    }
+    .tc-delete-cancel:hover { background: rgba(255,255,255,0.07); }
+    .tc-delete-confirm-btn {
+      height: 36px; padding: 0 20px; border-radius: 9999px; border: none;
+      background: #f4212e; color: #fff;
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: transform 0.12s, box-shadow 0.15s, opacity 0.15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tc-delete-confirm-btn:hover:not(:disabled) { transform: scale(1.04); box-shadow: 0 4px 18px rgba(244,33,46,0.4); }
+    .tc-delete-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
     .tc-content {
       color: rgba(255,255,255,0.9); font-size: 15px; line-height: 1.65;
       margin-bottom: 10px; word-break: break-word;
     }
-
-    /* ── Image ── */
     .tc-image-wrap {
       border-radius: 16px; overflow: hidden; margin-bottom: 12px;
       border: 1px solid rgba(255,255,255,0.08); position: relative;
@@ -212,13 +305,10 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     }
     .tc-image-wrap:hover img { transform: scale(1.02); filter: brightness(0.92); }
 
-    /* ── NEW: Audio player ── */
     .tc-audio-player {
       display: flex; align-items: center; gap: 10px;
-      background: rgba(29,155,240,0.06);
-      border: 1px solid rgba(29,155,240,0.15);
-      border-radius: 14px; padding: 10px 14px;
-      margin-bottom: 12px;
+      background: rgba(29,155,240,0.06); border: 1px solid rgba(29,155,240,0.15);
+      border-radius: 14px; padding: 10px 14px; margin-bottom: 12px;
       transition: border-color 0.2s ease;
     }
     .tc-audio-player:hover { border-color: rgba(29,155,240,0.3); }
@@ -230,31 +320,21 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       box-shadow: 0 2px 12px rgba(29,155,240,0.35);
     }
     .tc-audio-play-btn:hover { transform: scale(1.08); box-shadow: 0 4px 18px rgba(29,155,240,0.5); }
-    .tc-audio-play-btn:active { transform: scale(0.95); }
-    .tc-audio-waveform {
-      display: flex; align-items: center; gap: 2.5px; height: 28px; flex: 1;
-    }
+    .tc-audio-waveform { display: flex; align-items: center; gap: 2.5px; height: 28px; flex: 1; }
     .tc-audio-bar {
       width: 3px; border-radius: 3px; background: rgba(29,155,240,0.5);
-      transform-origin: center bottom;
-      transition: background 0.2s ease;
+      transform-origin: center bottom; transition: background 0.2s ease;
     }
-    .tc-audio-bar.playing {
-      background: #1d9bf0;
-    }
+    .tc-audio-bar.playing { background: #1d9bf0; }
     .tc-audio-badge {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 11px; font-weight: 600; color: rgba(29,155,240,0.8);
-      background: rgba(29,155,240,0.08);
-      border: 1px solid rgba(29,155,240,0.15);
-      border-radius: 9999px; padding: 2px 8px 2px 6px;
-      margin-bottom: 6px;
+      background: rgba(29,155,240,0.08); border: 1px solid rgba(29,155,240,0.15);
+      border-radius: 9999px; padding: 2px 8px 2px 6px; margin-bottom: 6px;
     }
 
-    /* ── Action bar ── */
     .tc-actions {
-      display: flex; align-items: center; gap: 0;
-      margin-top: 6px; max-width: 440px;
+      display: flex; align-items: center; gap: 0; margin-top: 6px; max-width: 440px;
     }
     .tc-action-btn {
       display: flex; align-items: center; gap: 6px; padding: 7px 10px;
@@ -283,14 +363,12 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     .tc-comment-btn .tc-ripple { background: rgba(29,155,240,0.3); }
 
     .tc-retweet-btn:hover { background: rgba(0,186,124,0.1); color: #00ba7c; }
-    .tc-retweet-btn:hover .tc-action-icon { color: #00ba7c; }
     .tc-retweet-btn.active { color: #00ba7c; }
     .tc-retweet-btn.active .tc-action-icon { color: #00ba7c; filter: drop-shadow(0 0 4px rgba(0,186,124,0.5)); }
     .tc-retweet-btn .tc-ripple { background: rgba(0,186,124,0.3); }
     .tc-retweet-btn.spinning .tc-action-icon { animation: tc-retweetSpin 0.55s cubic-bezier(0.22,1,0.36,1) both; }
 
     .tc-like-btn:hover { background: rgba(249,24,128,0.1); color: #f91880; }
-    .tc-like-btn:hover .tc-action-icon { color: #f91880; }
     .tc-like-btn.active { color: #f91880; }
     .tc-like-btn.active .tc-action-icon { color: #f91880; filter: drop-shadow(0 0 5px rgba(249,24,128,0.55)); }
     .tc-like-btn.popping .tc-action-icon { animation: tc-heartPop 0.45s cubic-bezier(0.22,1,0.36,1) both; }
@@ -323,29 +401,44 @@ function fireRipple(el: HTMLElement) {
   ripple.style.animation = "tc-ripple 0.52s ease-out forwards";
 }
 
-// ─── Decorative static waveform bars (vary height by index) ──────────────────
 const WAVE_PATTERN = [8, 14, 20, 28, 18, 24, 32, 16, 22, 28, 12, 26, 20, 32, 18, 14, 24, 20, 16, 10, 22, 28, 18, 12];
-
-// ─── Duration formatter ───────────────────────────────────────────────────────
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${Math.round(s % 60).toString().padStart(2, "0")}`;
 
-export default function TweetCard({ tweet }: any) {
+interface TweetCardProps {
+  tweet: any;
+  /** Called after a successful delete so the parent can remove the card */
+  onDelete?: (tweetId: string) => void;
+  /** Called after a successful edit so the parent can update state */
+  onEdit?: (updatedTweet: any) => void;
+}
+
+export default function TweetCard({ tweet, onDelete, onEdit }: TweetCardProps) {
   const { user } = useAuth();
-  const [tweetstate, settweetstate]       = useState(tweet);
-  const [likePopping, setLikePopping]     = useState(false);
-  const [heartBurst, setHeartBurst]       = useState(false);
+  const [tweetstate, settweetstate]           = useState(tweet);
+  const [likePopping, setLikePopping]         = useState(false);
+  const [heartBurst, setHeartBurst]           = useState(false);
   const [retweetSpinning, setRetweetSpinning] = useState(false);
   const [bookmarkBouncing, setBookmarkBouncing] = useState(false);
-  const [showMenu, setShowMenu]           = useState(false);
-  const [isNew, setIsNew]                 = useState(true);
+  const [showMenu, setShowMenu]               = useState(false);
+  const [isNew, setIsNew]                     = useState(true);
 
-  // ── NEW: audio player state ───────────────────────────────────────────────
+  // ── Edit state ────────────────────────────────────────────────────────────
+  const [editMode, setEditMode]       = useState(false);
+  const [editContent, setEditContent] = useState(tweet.content);
+  const [isSaving, setIsSaving]       = useState(false);
+  const editRef                       = useRef<HTMLTextAreaElement>(null);
+
+  // ── Delete state ──────────────────────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting]               = useState(false);
+  const [deletingAnim, setDeletingAnim]           = useState(false);
+
+  // ── Audio state ───────────────────────────────────────────────────────────
   const [audioPlaying, setAudioPlaying]   = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0); // 0–1
-  const [audioCurrent, setAudioCurrent]   = useState(0); // seconds
+  const [audioProgress, setAudioProgress] = useState(0);
+  const [audioCurrent, setAudioCurrent]   = useState(0);
   const audioElemRef                      = useRef<HTMLAudioElement | null>(null);
   const progressRafRef                    = useRef<number | null>(null);
-  // ─────────────────────────────────────────────────────────────────────────
 
   const cardRef = useRef<HTMLDivElement>(null);
   const [bookmarked, setBookmarked] = useState(() => {
@@ -354,23 +447,35 @@ export default function TweetCard({ tweet }: any) {
     return saved.includes(tweet._id);
   });
 
+  const isOwner = user?._id?.toString() === tweetstate.author?._id?.toString();
+  const MAX = 280;
+
   useEffect(() => {
     const t = setTimeout(() => setIsNew(false), 1500);
     return () => clearTimeout(t);
   }, []);
 
-  // ── NEW: update audio progress via rAF ───────────────────────────────────
+  // Auto-grow edit textarea
+  useEffect(() => {
+    if (editMode && editRef.current) {
+      editRef.current.style.height = "auto";
+      editRef.current.style.height = editRef.current.scrollHeight + "px";
+      editRef.current.focus();
+    }
+  }, [editMode, editContent]);
+
+  // Audio progress
   useEffect(() => {
     const el = audioElemRef.current;
     if (!el) return;
-    const tick = () => {
+    const tick  = () => {
       if (!el.duration) return;
       setAudioCurrent(el.currentTime);
       setAudioProgress(el.currentTime / el.duration);
       if (!el.paused) progressRafRef.current = requestAnimationFrame(tick);
     };
-    const onPlay  = () => { setAudioPlaying(true);  progressRafRef.current = requestAnimationFrame(tick); };
-    const onPause = () => { setAudioPlaying(false); progressRafRef.current && cancelAnimationFrame(progressRafRef.current); };
+    const onPlay  = () => { setAudioPlaying(true); progressRafRef.current = requestAnimationFrame(tick); };
+    const onPause = () => { setAudioPlaying(false); progressRafRef.current && cancelAnimationFrame(progressRafRef.current!); };
     const onEnded = () => { setAudioPlaying(false); setAudioProgress(0); setAudioCurrent(0); };
     el.addEventListener("play",  onPlay);
     el.addEventListener("pause", onPause);
@@ -379,17 +484,17 @@ export default function TweetCard({ tweet }: any) {
       el.removeEventListener("play",  onPlay);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
-      progressRafRef.current && cancelAnimationFrame(progressRafRef.current);
+      progressRafRef.current && cancelAnimationFrame(progressRafRef.current!);
     };
   }, [tweetstate.audio]);
-  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (tweetstate.isLiked) {
-      sendTweetNotification(tweetstate.content);
-    }
-  }, [tweetstate]);
+  if (tweetstate?.content && tweetstate?.author?.displayName) {
+    sendTweetNotification(tweetstate.content, tweetstate.author.displayName);
+  }
+}, []);
 
+  // ── API helpers ────────────────────────────────────────────────────────────
   const likeTweet = async (tweetId: string) => {
     try {
       const res = await axiosInstance.post(`/like/${tweetId}`);
@@ -408,18 +513,53 @@ export default function TweetCard({ tweet }: any) {
     }
   };
 
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  const handleDeleteConfirmed = async () => {
+    setIsDeleting(true);
+    try {
+      await axiosInstance.delete(`/post/${tweetstate._id}`);
+      // Trigger fade-out animation, then notify parent
+      setDeletingAnim(true);
+      setTimeout(() => onDelete?.(tweetstate._id), 380);
+    } catch (error: any) {
+      console.error("Delete error:", error.response?.data || error.message);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  // ── Edit / Save ────────────────────────────────────────────────────────────
+  const handleEditSave = async () => {
+    const trimmed = editContent.trim();
+    if (!trimmed || trimmed === tweetstate.content || trimmed.length > MAX) return;
+    setIsSaving(true);
+    try {
+      const res = await axiosInstance.patch(`/post/${tweetstate._id}`, { content: trimmed });
+      const updated = { ...tweetstate, content: trimmed, edited: true, ...res.data };
+      settweetstate(updated);
+      onEdit?.(updated);
+      setEditMode(false);
+    } catch (error: any) {
+      console.error("Edit error:", error.response?.data || error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditContent(tweetstate.content);
+    setEditMode(false);
+  };
+
+  // ── Other handlers ─────────────────────────────────────────────────────────
   const formatNumber = (num: number) => {
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
     if (num >= 1_000)     return (num / 1_000).toFixed(1) + "K";
     return num?.toString() ?? "0";
   };
 
-  const isLiked = tweetstate.likedBy?.some(
-    (id: any) => id?.toString() === user?._id?.toString(),
-  );
-  const isRetweet = tweetstate.retweetedBy?.some(
-    (id: any) => id?.toString() === user?._id?.toString(),
-  );
+  const isLiked    = tweetstate.likedBy?.some((id: any) => id?.toString() === user?._id?.toString());
+  const isRetweet  = tweetstate.retweetedBy?.some((id: any) => id?.toString() === user?._id?.toString());
 
   const handleLike = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -440,7 +580,7 @@ export default function TweetCard({ tweet }: any) {
 
   const handleBookmark = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    const saved = JSON.parse(localStorage.getItem("bookmarks") || "[]");
+    const saved   = JSON.parse(localStorage.getItem("bookmarks") || "[]");
     const newSaved = bookmarked
       ? saved.filter((id: string) => id !== tweetstate._id)
       : [...saved, tweetstate._id];
@@ -450,16 +590,14 @@ export default function TweetCard({ tweet }: any) {
     setTimeout(() => setBookmarkBouncing(false), 450);
   };
 
-  // ── NEW: toggle audio playback ────────────────────────────────────────────
   const handleAudioToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     const el = audioElemRef.current;
     if (!el) return;
     if (audioPlaying) el.pause();
-    else              el.play().catch(() => {});
+    else el.play().catch(() => {});
   };
 
-  // ── NEW: seek by clicking the progress bar ────────────────────────────────
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     const el = audioElemRef.current;
@@ -469,26 +607,101 @@ export default function TweetCard({ tweet }: any) {
     el.currentTime = ratio * el.duration;
     setAudioProgress(ratio);
   };
-  // ─────────────────────────────────────────────────────────────────────────
+
+  const editRemaining = MAX - editContent.length;
+  const editColor     = editContent.length > MAX ? "#ef4444" : editContent.length > MAX * 0.8 ? "#eab308" : "rgba(255,255,255,0.3)";
 
   return (
     <div
       ref={cardRef}
-      className={`tc-card${isNew ? " new-tweet" : ""}`}
-      onClick={() => setShowMenu(false)}
+      className={`tc-card${isNew ? " new-tweet" : ""}${editMode ? " is-editing" : ""}${deletingAnim ? " is-deleting" : ""}${showMenu ? " menu-open" : ""}`}
+      onClick={() => { setShowMenu(false); }}
     >
-      {/* More menu */}
+      {/* ── Delete confirmation overlay ───────────────────────────────────── */}
+      {showDeleteConfirm && (
+        <div className="tc-delete-confirm" onClick={e => e.stopPropagation()}>
+          <div className="tc-delete-confirm-box">
+            <div className="tc-delete-icon-wrap">
+              <AlertTriangle size={22} color="#f4212e" />
+            </div>
+            <h3 className="tc-delete-title">Delete this post?</h3>
+            <p className="tc-delete-sub">This can't be undone and will be removed for everyone.</p>
+            <div className="tc-delete-buttons">
+              <button
+                className="tc-delete-cancel"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="tc-delete-confirm-btn"
+                onClick={handleDeleteConfirmed}
+                disabled={isDeleting}
+              >
+                <Trash2 size={14} />
+                {isDeleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── More menu ─────────────────────────────────────────────────────── */}
       {showMenu && (
-        <div className="tc-more-menu">
-          {["Copy link", "Embed post", "Report post"].map((item) => (
-            <button
-              key={item}
-              className="tc-more-menu-item"
-              onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
-            >
-              {item}
-            </button>
-          ))}
+        <div className="tc-more-menu" onClick={e => e.stopPropagation()}>
+          {isOwner ? (
+            <>
+              <button
+                className="tc-more-menu-item"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                  setEditContent(tweetstate.content);
+                  setEditMode(true);
+                }}
+              >
+                <Pencil size={14} style={{ opacity: 0.7 }} />
+                Edit post
+              </button>
+
+              <div className="tc-more-menu-sep" />
+
+              <button
+                className="tc-more-menu-item tc-danger"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(false);
+                  setShowDeleteConfirm(true);
+                }}
+              >
+                <Trash2 size={14} />
+                Delete post
+              </button>
+
+              <div className="tc-more-menu-sep" />
+
+              {["Copy link", "Embed post"].map((item) => (
+                <button
+                  key={item}
+                  className="tc-more-menu-item"
+                  onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+                >
+                  {item}
+                </button>
+              ))}
+            </>
+          ) : (
+            ["Copy link", "Embed post", "Report post"].map((item) => (
+              <button
+                key={item}
+                className="tc-more-menu-item"
+                onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+              >
+                {item}
+              </button>
+            ))
+          )}
         </div>
       )}
 
@@ -524,6 +737,14 @@ export default function TweetCard({ tweet }: any) {
             <span className="tc-dot">·</span>
             <span className="tc-timestamp">{tweetstate.timestamp && timeAgo(tweetstate.timestamp)}</span>
 
+            {/* "edited" badge */}
+            {tweetstate.edited && (
+              <span className="tc-edited-badge">
+                <Pencil size={9} />
+                edited
+              </span>
+            )}
+
             <button
               className="tc-more-btn"
               onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }}
@@ -532,8 +753,45 @@ export default function TweetCard({ tweet }: any) {
             </button>
           </div>
 
-          {/* Content */}
-          <div className="tc-content">{formatTweetContent(tweetstate.content)}</div>
+          {/* ── Content / Edit area ── */}
+          {editMode ? (
+            <div className="tc-edit-area" onClick={e => e.stopPropagation()}>
+              <textarea
+                ref={editRef}
+                className="tc-edit-textarea"
+                value={editContent}
+                onChange={e => setEditContent(e.target.value)}
+                rows={3}
+                disabled={isSaving}
+              />
+              <div className="tc-edit-footer">
+                <span className="tc-edit-count" style={{ color: editColor }}>
+                  {editRemaining < 40 ? editRemaining : ""}
+                </span>
+                <div className="tc-edit-actions">
+                  <button className="tc-edit-cancel-btn" onClick={handleEditCancel} disabled={isSaving}>
+                    <XIcon size={13} strokeWidth={2.5} />
+                    Cancel
+                  </button>
+                  <button
+                    className="tc-edit-save-btn"
+                    onClick={handleEditSave}
+                    disabled={
+                      isSaving ||
+                      !editContent.trim() ||
+                      editContent.trim() === tweetstate.content ||
+                      editContent.length > MAX
+                    }
+                  >
+                    <Check size={13} strokeWidth={2.5} />
+                    {isSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="tc-content">{formatTweetContent(tweetstate.content)}</div>
+          )}
 
           {/* Image */}
           {tweetstate.image && (
@@ -542,36 +800,23 @@ export default function TweetCard({ tweet }: any) {
             </div>
           )}
 
-          {/* ── NEW: Audio Player ───────────────────────────────────────────── */}
+          {/* Audio Player */}
           {tweetstate.audio && (
             <div onClick={e => e.stopPropagation()}>
-              {/* Hidden audio element */}
               <audio ref={audioElemRef} src={tweetstate.audio} preload="metadata" style={{ display: "none" }} />
-
-              {/* Badge */}
               <div className="tc-audio-badge">
                 <Mic size={10} />
                 Audio tweet
               </div>
-
-              {/* Player card */}
               <div className="tc-audio-player">
-                {/* Play / Pause */}
                 <button className="tc-audio-play-btn" onClick={handleAudioToggle}>
                   {audioPlaying
                     ? <Pause size={15} color="#fff" />
                     : <Play  size={15} color="#fff" style={{ marginLeft: 2 }} />
                   }
                 </button>
-
-                {/* Waveform + progress */}
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                  {/* Clickable waveform */}
-                  <div
-                    className="tc-audio-waveform"
-                    onClick={handleSeek}
-                    style={{ cursor: "pointer", position: "relative" }}
-                  >
+                  <div className="tc-audio-waveform" onClick={handleSeek} style={{ cursor: "pointer" }}>
                     {WAVE_PATTERN.map((h, i) => {
                       const filled = i / WAVE_PATTERN.length < audioProgress;
                       return (
@@ -590,8 +835,6 @@ export default function TweetCard({ tweet }: any) {
                       );
                     })}
                   </div>
-
-                  {/* Time */}
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "rgba(255,255,255,.4)", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
                       {fmtTime(audioCurrent)}
@@ -606,18 +849,15 @@ export default function TweetCard({ tweet }: any) {
               </div>
             </div>
           )}
-          {/* ───────────────────────────────────────────────────────────────── */}
 
-          {/* ── Actions ── */}
+          {/* Actions */}
           <div className="tc-actions">
-            {/* Comment */}
             <button className="tc-action-btn tc-comment-btn" onClick={(e) => { e.stopPropagation(); fireRipple(e.currentTarget); }}>
               <div className="tc-ripple" />
               <MessageCircle size={17} className="tc-action-icon" />
               <span className="tc-action-count">{formatNumber(tweetstate.comments ?? 0)}</span>
             </button>
 
-            {/* Retweet */}
             <button
               className={`tc-action-btn tc-retweet-btn${isRetweet ? " active" : ""}${retweetSpinning ? " spinning" : ""}`}
               onClick={handleRetweet}
@@ -627,7 +867,6 @@ export default function TweetCard({ tweet }: any) {
               <span className="tc-action-count">{formatNumber(tweetstate.retweets ?? 0)}</span>
             </button>
 
-            {/* Like */}
             <button
               className={`tc-action-btn tc-like-btn${isLiked ? " active" : ""}${likePopping ? " popping" : ""}`}
               onClick={handleLike}
@@ -638,13 +877,11 @@ export default function TweetCard({ tweet }: any) {
               <span className="tc-action-count">{formatNumber(tweetstate.likes ?? 0)}</span>
             </button>
 
-            {/* Share */}
             <button className="tc-action-btn tc-share-btn" onClick={(e) => { e.stopPropagation(); fireRipple(e.currentTarget); }}>
               <div className="tc-ripple" />
               <Share size={17} className="tc-action-icon" />
             </button>
 
-            {/* Bookmark */}
             <button
               className={`tc-action-btn tc-bookmark-btn${bookmarked ? " active" : ""}${bookmarkBouncing ? " bouncing" : ""}`}
               onClick={handleBookmark}

@@ -69,56 +69,79 @@ export default function SubscriptionPage() {
     }
   }, []);
 
-  const handleSubscribe = async (planId: string) => {
-    if (planId === "free") return;
-    setPaying(planId);
-    setTimeError("");
-    try {
-      const orderRes = await axiosInstance.post("/create-order", { plan: planId });
-      const { orderId, amount } = orderRes.data;
+  const [demoModal, setDemoModal] = useState<{ open: boolean; planId: string; amount: number } | null>(null);
+const [demoProcessing, setDemoProcessing] = useState(false);
 
-      const options = {
-        key:         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount,
-        currency:    "INR",
-        name:        "Twiller",
-        description: `${planId.charAt(0).toUpperCase() + planId.slice(1)} Plan`,
-        order_id:    orderId,
-        handler: async (response: any) => {
-          try {
-            await axiosInstance.post("/verify-payment", {
-              razorpay_order_id:   response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature:  response.razorpay_signature,
-              plan:                planId,
-            });
-            const sub = await axiosInstance.get("/subscription");
-            setCurrent(sub.data);
-            alert(`✅ ${planId} plan activated! Check your email for the invoice.`);
-          } catch {
-            alert("Payment verification failed. Contact support.");
-          }
-        },
-        prefill: { email: "" },
-        theme:   { color: "#1d9bf0" },
-      };
+const handleSubscribe = async (planId: string) => {
+  if (planId === "free") return;
+  setPaying(planId);
+  setTimeError("");
 
-      const rzp = new window.Razorpay(options);
-      rzp.open();
-    } catch (err: any) {
-      const status = err.response?.status;
-      const msg    = err.response?.data?.error;
-      if (status === 403) {
-        setTimeError(msg || "Payments only accepted 10AM–11AM IST");
-      } else if (status === 401) {
-        setTimeError("Please log in again to make a payment.");
-      } else {
-        setTimeError(msg || "Something went wrong. Please try again.");
-      }
-    } finally {
+  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+  try {
+    const orderRes = await axiosInstance.post("/create-order", { plan: planId });
+    const { amount } = orderRes.data;
+
+    if (isDemo) {
+      // Show our fake Razorpay-style popup
       setPaying(null);
+      setDemoModal({ open: true, planId, amount });
+      return;
     }
-  };
+
+    // Real Razorpay flow (works on localhost)
+    const options = {
+      key:         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount,
+      currency:    "INR",
+      name:        "Twiller",
+      description: `${planId.charAt(0).toUpperCase() + planId.slice(1)} Plan`,
+      order_id:    orderRes.data.orderId,
+      handler: async (response: any) => {
+        try {
+          await axiosInstance.post("/verify-payment", {
+            razorpay_order_id:   response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature:  response.razorpay_signature,
+            plan:                planId,
+          });
+          const sub = await axiosInstance.get("/subscription");
+          setCurrent(sub.data);
+          alert(`✅ ${planId} plan activated! Check your email for the invoice.`);
+        } catch {
+          alert("Payment verification failed. Contact support.");
+        }
+      },
+      prefill: { email: "" },
+      theme:   { color: "#1d9bf0" },
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  } catch (err: any) {
+    const msg = err.response?.data?.error;
+    setTimeError(msg || "Something went wrong. Please try again.");
+  } finally {
+    setPaying(null);
+  }
+};
+
+const handleDemoPayment = async () => {
+  if (!demoModal) return;
+  setDemoProcessing(true);
+  try {
+    await axiosInstance.post("/demo-payment", { plan: demoModal.planId });
+    const sub = await axiosInstance.get("/subscription");
+    setCurrent(sub.data);
+    setDemoModal(null);
+    alert(`✅ ${demoModal.planId} plan activated! Check your email for the invoice.`);
+  } catch (err: any) {
+    setTimeError(err.response?.data?.error || "Demo payment failed.");
+    setDemoModal(null);
+  } finally {
+    setDemoProcessing(false);
+  }
+};
 
   const used  = current?.tweetsUsed ?? 0;
   const limit = current?.tweetLimit ?? 1;
@@ -373,6 +396,96 @@ export default function SubscriptionPage() {
           })}
         </div>
       </div>
+      {/* ── Demo Razorpay Modal ── */}
+{demoModal?.open && (
+  <div style={{
+    position: "fixed", inset: 0, zIndex: 999,
+    background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "0 16px",
+  }}>
+    <div style={{
+      background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380,
+      overflow: "hidden", fontFamily: "sans-serif",
+    }}>
+      {/* Razorpay-style header */}
+      <div style={{ background: "#1d9bf0", padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: "50%", background: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontWeight: 900, color: "#1d9bf0", fontSize: 18,
+        }}>T</div>
+        <div>
+          <p style={{ color: "#fff", fontWeight: 700, margin: 0, fontSize: 16 }}>Twiller</p>
+          <p style={{ color: "rgba(255,255,255,0.8)", margin: 0, fontSize: 13 }}>
+            ₹{(demoModal.amount / 100).toLocaleString("en-IN")} · {demoModal.planId} Plan
+          </p>
+        </div>
+      </div>
+
+      <div style={{ padding: "20px" }}>
+        {/* Test mode notice */}
+        <div style={{
+          background: "#fff8e1", border: "1px solid #ffe082",
+          borderRadius: 8, padding: "10px 14px", marginBottom: 16,
+          fontSize: 13, color: "#795548",
+        }}>
+          🧪 <strong>Test Mode</strong> — Razorpay restricts live domains in test mode.
+          Your demo payment will be processed directly.
+        </div>
+
+        {/* Test card info */}
+        <div style={{
+          background: "#f5f5f5", borderRadius: 10, padding: "14px 16px", marginBottom: 20,
+        }}>
+          <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: "#333" }}>
+            Test Card Details
+          </p>
+          {[
+            ["Card Number", "4111 1111 1111 1111"],
+            ["Expiry",      "Any future date"],
+            ["CVV",         "Any 3 digits"],
+            ["OTP",         "Any 6 digits"],
+          ].map(([label, value]) => (
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ color: "#888", fontSize: 13 }}>{label}</span>
+              <span style={{ color: "#333", fontWeight: 600, fontSize: 13 }}>{value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Buttons */}
+        <button
+          onClick={handleDemoPayment}
+          disabled={demoProcessing}
+          style={{
+            width: "100%", padding: "13px 0", borderRadius: 9999, border: "none",
+            background: demoProcessing ? "#90caf9" : "#1d9bf0",
+            color: "#fff", fontWeight: 700, fontSize: 16, cursor: "pointer",
+            marginBottom: 10,
+          }}
+        >
+          {demoProcessing ? "Processing…" : `Pay ₹${(demoModal.amount / 100).toLocaleString("en-IN")}`}
+        </button>
+        <button
+          onClick={() => setDemoModal(null)}
+          disabled={demoProcessing}
+          style={{
+            width: "100%", padding: "11px 0", borderRadius: 9999,
+            border: "1px solid #e0e0e0", background: "#fff",
+            color: "#666", fontWeight: 600, fontSize: 14, cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "0 0 14px", color: "#aaa", fontSize: 12 }}>
+        🔒 Secured by <strong>Razorpay</strong>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

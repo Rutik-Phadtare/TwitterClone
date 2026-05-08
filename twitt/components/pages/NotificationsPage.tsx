@@ -6,6 +6,8 @@ import NotificationToggle from "../NotificationToggle";
 export default function NotificationsPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#000" }}>
+
+      {/* Sticky header */}
       <div style={{
         position: "sticky", top: 0, zIndex: 20,
         background: "rgba(0,0,0,0.85)", backdropFilter: "blur(18px)",
@@ -15,7 +17,7 @@ export default function NotificationsPage() {
         <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>Notifications</h1>
       </div>
 
-      {/* Notification settings */}
+      {/* Notification settings toggle */}
       <NotificationToggle />
 
       {/* Empty state */}
@@ -36,6 +38,7 @@ export default function NotificationsPage() {
           Likes, mentions, and other interactions will appear here.
         </p>
       </div>
+
     </div>
   );
 }

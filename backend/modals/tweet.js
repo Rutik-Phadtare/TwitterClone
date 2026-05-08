@@ -12,6 +12,7 @@ const TweetSchema = mongoose.Schema({
   timestamp:   { type: Date, default: Date.now }, // ← removed () — now a function ref
   audio: { type: String, default: null }, // add this field
   audioDuration: { type: Number, default: null }, // seconds
+  edited:        { type: Boolean, default: false }, // new field to track if the tweet has been edited
 });
 
 export default mongoose.model("Tweet", TweetSchema);
