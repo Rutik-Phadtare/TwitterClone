@@ -3,12 +3,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Image, Smile, Calendar, MapPin,
-  BarChart3, Globe, X, Loader2,
+  BarChart3, Globe, X, Loader2, Mic,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import axios from "axios";
 import axiosInstance from "@/lib/axiosInstance";
+import AudioRecorder from "./AudioRecorder"; // ← NEW
 
 const COMPOSER_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -47,6 +48,14 @@ const COMPOSER_STYLES = `
     transition: opacity 0.15s; border: 1px solid rgba(255,255,255,0.08);
   }
   .tc-icon-btn:hover::after { opacity: 1; }
+
+  /* Mic button active state — glowing when audio is attached */
+  .tc-icon-btn.tc-mic-active {
+    background: rgba(29,155,240,0.15);
+    color: #1d9bf0;
+    box-shadow: 0 0 0 2px rgba(29,155,240,0.3);
+  }
+
   .tc-post-btn {
     height: 36px; padding: 0 20px; border-radius: 9999px; border: none;
     background: linear-gradient(135deg, #1d9bf0 0%, #0e7fd8 100%);
@@ -78,6 +87,31 @@ const COMPOSER_STYLES = `
     backdrop-filter: blur(6px);
   }
   .tc-preview-remove:hover { background: rgba(220,38,38,0.75); transform: scale(1.1); }
+
+  /* ── Audio preview pill ── */
+  @keyframes audioPillIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .tc-audio-preview {
+    animation: audioPillIn 0.24s cubic-bezier(0.22,1,0.36,1) both;
+    display: flex; align-items: center; gap: 10;
+    background: rgba(29,155,240,0.07);
+    border: 1px solid rgba(29,155,240,0.2);
+    border-radius: 12px; padding: 10px 14px;
+    margin-top: 12px;
+  }
+
+  /* ── AudioRecorder slide-in panel ── */
+  @keyframes recorderSlideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .tc-recorder-panel {
+    animation: recorderSlideIn 0.28s cubic-bezier(0.22,1,0.36,1) both;
+    margin-top: 14px;
+  }
+
   .tc-ring { transition: stroke-dashoffset 0.25s cubic-bezier(.4,0,.2,1), stroke 0.25s ease; }
   .tc-audience {
     display: inline-flex; align-items: center; gap: 5px;
@@ -92,12 +126,11 @@ const COMPOSER_STYLES = `
     background: linear-gradient(to bottom, rgba(255,255,255,0.12), transparent);
     border-radius: 1px; margin-top: 6px;
   }
-    /* Add inside the existing COMPOSER_STYLES string */
-    @media (max-width: 480px) {
-      .tc-wrap { padding: 10px 12px 8px !important; }
-      .tc-textarea { font-size: 1rem !important; min-height: 80px !important; }
-      .tc-post-btn { height: 32px !important; padding: 0 14px !important; font-size: 0.85rem !important; }
-      }
+  @media (max-width: 480px) {
+    .tc-wrap { padding: 10px 12px 8px !important; }
+    .tc-textarea { font-size: 1rem !important; min-height: 80px !important; }
+    .tc-post-btn { height: 32px !important; padding: 0 14px !important; font-size: 0.85rem !important; }
+  }
   @keyframes composerIn {
     from { opacity: 0; transform: translateY(-8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -117,16 +150,29 @@ const COMPOSER_STYLES = `
   }
 `;
 
+// ─── Tiny audio duration formatter ───────────────────────────────────────────
+const fmtDuration = (sec: number) => {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
 const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void }) => {
   const { user } = useAuth();
-  const [content, setContent]       = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef             = useRef(false);
-  const [isUploading, setIsUploading]   = useState(false);
-  const [imageurl, setImageurl]     = useState("");
-  const [postError, setPostError]   = useState("");   // ← shows real error inline
-  const textareaRef                 = useRef<HTMLTextAreaElement>(null);
+  const [content, setContent]             = useState("");
+  const [isSubmitting, setIsSubmitting]   = useState(false);
+  const isSubmittingRef                   = useRef(false);
+  const [isUploading, setIsUploading]     = useState(false);
+  const [imageurl, setImageurl]           = useState("");
+  const [postError, setPostError]         = useState("");
+  const textareaRef                       = useRef<HTMLTextAreaElement>(null);
   const maxLength = 280;
+
+  // ── NEW: audio state ──────────────────────────────────────────────────────
+  const [audioUrl, setAudioUrl]           = useState("");        // cloudinary URL
+  const [audioDuration, setAudioDuration] = useState<number>(0); // seconds
+  const [showRecorder, setShowRecorder]   = useState(false);     // toggle panel
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -140,7 +186,6 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
     setPostError("");
     if (!user || !content.trim()) return;
 
-    // ── FIX: guard handles both undefined _id and missing user ───────────────
     if (!user._id) {
       setPostError("Profile not fully loaded yet — please refresh the page.");
       return;
@@ -152,15 +197,18 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
 
     try {
       const res = await axiosInstance.post("/post", {
-        content: content.trim(),
-        image:   imageurl || null,
-        // author is intentionally omitted — backend reads it from the JWT token
+        content:       content.trim(),
+        image:         imageurl       || null,
+        audio:         audioUrl       || null,  // ← NEW
+        audioDuration: audioDuration  || null,  // ← NEW
       });
       onTweetPosted(res.data);
       setContent("");
       setImageurl("");
+      setAudioUrl("");         // ← NEW: clear after post
+      setAudioDuration(0);    // ← NEW
+      setShowRecorder(false); // ← NEW
     } catch (error: any) {
-      // ── FIX: extract real message from every possible error shape ──────────
       const serverMsg  = error.response?.data?.error
                       || error.response?.data?.message
                       || (typeof error.response?.data === "string" ? error.response.data : null);
@@ -172,7 +220,6 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
       } else if (statusCode === 401) {
         setPostError("Session expired — please log out and log in again.");
       } else if (statusCode === 404) {
-        // Most likely wrong backend URL — show actionable message in dev
         setPostError(
           process.env.NODE_ENV === "development"
             ? `Backend not reachable (404). Check NEXT_PUBLIC_BACKEND_URL in .env.local — current value: "${process.env.NEXT_PUBLIC_BACKEND_URL || "not set, using http://localhost:5000"}"`
@@ -225,6 +272,14 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
     e.target.value = "";
   };
 
+  // ── NEW: callback from AudioRecorder on successful upload ─────────────────
+  const handleAudioReady = (url: string, duration: number) => {
+    setAudioUrl(url);
+    setAudioDuration(duration);
+    setShowRecorder(false); // collapse the recorder panel
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   const characterCount = content.length;
   const isOverLimit    = characterCount > maxLength;
   const isNearLimit    = characterCount > maxLength * 0.8;
@@ -251,7 +306,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
                 {user.displayName?.[0]}
               </AvatarFallback>
             </Avatar>
-            {(content.length > 0 || imageurl) && <div className="tc-avatar-thread-line" />}
+            {(content.length > 0 || imageurl || audioUrl) && <div className="tc-avatar-thread-line" />}
           </div>
 
           {/* Right column */}
@@ -267,6 +322,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
                 disabled={isSubmitting}
               />
 
+              {/* Image preview */}
               {imageurl && (
                 <div className="tc-preview">
                   <img src={imageurl} alt="Preview" />
@@ -276,7 +332,60 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
                 </div>
               )}
 
-              {/* ── Inline error banner ── */}
+              {/* ── NEW: Audio preview pill ─────────────────────────────── */}
+              {audioUrl && (
+                <div className="tc-audio-preview" style={{ gap: 10 }}>
+                  {/* Pulse dot indicating audio attached */}
+                  <div style={{
+                    width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                    background: "rgba(29,155,240,0.15)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Mic size={15} color="#1d9bf0" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 600, color: "#fff" }}>
+                      Audio attached
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>
+                      {audioDuration > 0 ? fmtDuration(audioDuration) : "Ready"}
+                    </div>
+                  </div>
+                  {/* Native audio preview (tiny) */}
+                  <audio controls src={audioUrl} style={{ height: 28, maxWidth: 140, flexShrink: 0 }} />
+                  {/* Remove */}
+                  <button
+                    type="button"
+                    onClick={() => { setAudioUrl(""); setAudioDuration(0); }}
+                    style={{
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: "rgba(255,255,255,.4)", padding: 4, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "color .15s",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
+                    onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,.4)")}
+                    aria-label="Remove audio"
+                  >
+                    <X size={14} strokeWidth={2.5} />
+                  </button>
+                </div>
+              )}
+              {/* ──────────────────────────────────────────────────────────── */}
+
+              {/* ── NEW: AudioRecorder panel (slides in below) ────────────── */}
+              {showRecorder && !audioUrl && (
+                <div className="tc-recorder-panel">
+                  <AudioRecorder
+                    onAudioReady={handleAudioReady}
+                    onClose={() => setShowRecorder(false)}
+                  />
+                </div>
+              )}
+              {/* ──────────────────────────────────────────────────────────── */}
+
+              {/* Inline error banner */}
               {postError && (
                 <div className="tc-error">
                   <X size={14} strokeWidth={2.5} style={{ flexShrink: 0 }} />
@@ -298,6 +407,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
               {/* Toolbar */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  {/* Image upload */}
                   <label
                     htmlFor="tweetImage"
                     className="tc-icon-btn"
@@ -315,10 +425,32 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
                       disabled={isBusy}
                     />
                   </label>
+
                   <button type="button" className="tc-icon-btn" data-tip="Poll"     disabled={isBusy}><BarChart3 size={18} strokeWidth={2} /></button>
                   <button type="button" className="tc-icon-btn" data-tip="Emoji"    disabled={isBusy}><Smile    size={18} strokeWidth={2} /></button>
                   <button type="button" className="tc-icon-btn" data-tip="Schedule" disabled={isBusy}><Calendar size={18} strokeWidth={2} /></button>
                   <button type="button" className="tc-icon-btn" data-tip="Location" disabled={isBusy}><MapPin   size={18} strokeWidth={2} /></button>
+
+                  {/* ── NEW: Mic / Audio tweet button ────────────────────── */}
+                  <button
+                    type="button"
+                    data-tip="Audio tweet"
+                    className={`tc-icon-btn${audioUrl ? " tc-mic-active" : ""}`}
+                    disabled={isBusy}
+                    onClick={() => {
+                      // If audio already attached, clicking removes it (toggle off)
+                      if (audioUrl) {
+                        setAudioUrl("");
+                        setAudioDuration(0);
+                        setShowRecorder(false);
+                      } else {
+                        setShowRecorder(v => !v);
+                      }
+                    }}
+                  >
+                    <Mic size={18} strokeWidth={2} />
+                  </button>
+                  {/* ──────────────────────────────────────────────────────── */}
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

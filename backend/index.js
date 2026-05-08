@@ -68,6 +68,7 @@ const app = express();
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:3000',
+  'https://twitter-clone-lime-alpha.vercel.app'
 ].filter(Boolean);
 
 app.use(cors({
