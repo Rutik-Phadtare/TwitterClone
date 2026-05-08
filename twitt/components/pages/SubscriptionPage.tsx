@@ -55,320 +55,151 @@ const PLANS = [
 
 // ── Razorpay-lookalike Demo Modal ─────────────────────────────────────────────
 function RazorpayDemoModal({
-  planId,
-  amount,
-  onPay,
-  onClose,
-  processing,
+  planId, amount, onPay, onClose, processing,
 }: {
-  planId: string;
-  amount: number;
-  onPay: () => void;
-  onClose: () => void;
-  processing: boolean;
+  planId: string; amount: number;
+  onPay: () => void; onClose: () => void; processing: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<"upi" | "cards" | "emi" | "netbanking" | "wallet" | "paylater">("cards");
   const amountDisplay = (amount / 100).toLocaleString("en-IN");
-
-  const paymentMethods = [
-    { id: "upi",        label: "UPI",          icons: ["🏦","💳","📱","💰"] },
-    { id: "cards",      label: "Cards",        icons: ["💳","🔵","🔴","🟠"] },
-    { id: "emi",        label: "EMI",          icons: ["📊","💹"] },
-    { id: "netbanking", label: "Netbanking",   icons: ["🏛️","🏦","🦁","🐯"] },
-    { id: "wallet",     label: "Wallet",       icons: ["👛","💚","🔵"] },
-    { id: "paylater",   label: "Pay Later",    icons: ["⏰","🔶","✅"] },
-  ];
 
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
+      background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)",
       display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "16px", animation: "fadeIn 0.15s ease",
+      padding: "16px",
+      animation: "fadeIn 0.2s ease",
     }}>
       <style>{`
-        @keyframes fadeIn { from { opacity:0; transform:scale(0.97) } to { opacity:1; transform:scale(1) } }
-        @keyframes spin { to { transform: rotate(360deg) } }
-        .rzp-method:hover { background: #f0f4ff !important; }
-        .rzp-pay-btn:hover:not(:disabled) { background: #3a7bd5 !important; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes spin   { to { transform: rotate(360deg) } }
       `}</style>
 
       <div style={{
-        background: "#fff",
-        borderRadius: 12,
-        width: "100%",
-        maxWidth: 740,
-        minHeight: 480,
-        display: "flex",
+        background: "#0f0f0f",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20,
+        width: "100%", maxWidth: 400,
         overflow: "hidden",
-        boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        boxShadow: "0 32px 80px rgba(0,0,0,0.8)",
+        fontFamily: "'DM Sans', sans-serif",
       }}>
 
-        {/* ── LEFT PANEL (blue) ── */}
+        {/* ── Red top bar ── */}
         <div style={{
-          width: 260,
-          minWidth: 260,
-          background: "linear-gradient(160deg, #2563eb 0%, #1e40af 60%, #1e3a8a 100%)",
-          padding: "24px 20px",
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-          overflow: "hidden",
+          background: "linear-gradient(90deg, #c0392b, #e74c3c)",
+          padding: "14px 18px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          {/* background circle decorations */}
-          <div style={{
-            position: "absolute", bottom: -40, left: -40,
-            width: 200, height: 200, borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)",
-          }} />
-          <div style={{
-            position: "absolute", bottom: 40, right: -60,
-            width: 160, height: 160, borderRadius: "50%",
-            background: "rgba(255,255,255,0.04)",
-          }} />
-
-          {/* Merchant info */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Razorpay logo-style text */}
             <div style={{
-              width: 44, height: 44, borderRadius: "50%",
-              background: "#fff",
+              width: 28, height: 28, borderRadius: 6,
+              background: "rgba(255,255,255,0.2)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 900, color: "#2563eb", fontSize: 20, flexShrink: 0,
-            }}>T</div>
-            <div>
-              <p style={{ color: "#fff", fontWeight: 700, margin: 0, fontSize: 17, lineHeight: 1.2 }}>Twiller</p>
-              <p style={{ color: "rgba(255,255,255,0.6)", margin: 0, fontSize: 12 }}>Subscription</p>
-            </div>
+              fontSize: 14, fontWeight: 900, color: "#fff",
+            }}>R</div>
+            <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, letterSpacing: 0.2 }}>
+              Razorpay
+            </span>
           </div>
-
-          {/* Price summary */}
-          <div style={{
-            background: "rgba(255,255,255,0.12)",
-            borderRadius: 10, padding: "14px 16px", marginBottom: 16,
-            backdropFilter: "blur(4px)",
-          }}>
-            <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 11, margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.8 }}>
-              Price Summary
-            </p>
-            <p style={{ color: "#fff", fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>
-              ₹{amountDisplay}
-            </p>
-            <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 12, margin: "4px 0 0", textTransform: "capitalize" }}>
-              {planId} Plan · 1 month
-            </p>
-          </div>
-
-          {/* Phone */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            background: "rgba(255,255,255,0.08)", borderRadius: 8,
-            padding: "10px 12px", marginBottom: 20,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 13 }}>👤</span>
-              </div>
-              <div>
-                <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, margin: 0 }}>Using as</p>
-                <p style={{ color: "#fff", fontSize: 12, fontWeight: 600, margin: 0 }}>+91 XXXXX XXXXX</p>
-              </div>
-            </div>
-            <ChevronRight size={14} color="rgba(255,255,255,0.4)" />
-          </div>
-
-          {/* Test Mode Warning */}
-          <div style={{
-            background: "rgba(251,191,36,0.15)",
-            border: "1px solid rgba(251,191,36,0.35)",
-            borderRadius: 8, padding: "10px 12px",
-            marginBottom: "auto",
-          }}>
-            <p style={{ color: "#fbbf24", fontSize: 11, fontWeight: 700, margin: "0 0 3px" }}>⚠️ TEST MODE</p>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, margin: 0, lineHeight: 1.4 }}>
-              Razorpay blocked this domain. Use the demo flow below.
-            </p>
-          </div>
-
-          {/* Bottom branding */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 20 }}>
-            <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>Secured by</span>
-            <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 700 }}>Razorpay</span>
-          </div>
+          <button onClick={onClose} style={{
+            background: "rgba(255,255,255,0.15)", border: "none",
+            borderRadius: "50%", width: 28, height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", color: "#fff", fontSize: 16, lineHeight: 1,
+          }}>✕</button>
         </div>
 
-        {/* ── RIGHT PANEL ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* ── Body ── */}
+        <div style={{ padding: "28px 24px 24px" }}>
 
-          {/* Header */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid #f0f0f0",
+          {/* Icon */}
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: "rgba(239,68,68,0.1)",
+              border: "1px solid rgba(239,68,68,0.25)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              fontSize: 26,
+            }}>⚠️</div>
+          </div>
+
+          {/* Title */}
+          <h2 style={{
+            color: "#fff", fontSize: 18, fontWeight: 800,
+            textAlign: "center", margin: "0 0 10px",
           }}>
-            <span style={{ fontWeight: 700, fontSize: 15, color: "#1a1a1a" }}>Payment Options</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button style={{ background: "none", border: "none", cursor: "pointer", color: "#999", padding: 4 }}>···</button>
-              <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#999", padding: 4, display: "flex", alignItems: "center" }}>
-                <X size={18} />
-              </button>
-            </div>
+            Razorpay Payment Restriction
+          </h2>
+
+          {/* Description */}
+          <p style={{
+            color: "rgba(255,255,255,0.5)", fontSize: 14,
+            textAlign: "center", lineHeight: 1.6, margin: "0 0 10px",
+          }}>
+            Razorpay restricts live domains in test mode.
+          </p>
+
+          {/* Info box */}
+          <div style={{
+            background: "rgba(29,155,240,0.08)",
+            border: "1px solid rgba(29,155,240,0.2)",
+            borderRadius: 12, padding: "12px 16px",
+            marginBottom: 24,
+          }}>
+            <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+              Your <strong style={{ color: "#1d9bf0" }}>₹{amountDisplay} · {planId}</strong> plan payment will be processed directly through our system — subscription activates instantly.
+            </p>
           </div>
 
-          {/* Body: methods sidebar + content */}
-          <div style={{ display: "flex", flex: 1 }}>
-
-            {/* Methods list */}
-            <div style={{ width: 160, borderRight: "1px solid #f0f0f0", padding: "8px 0" }}>
-              {paymentMethods.map(m => (
-                <button
-                  key={m.id}
-                  className="rzp-method"
-                  onClick={() => setActiveTab(m.id as any)}
-                  style={{
-                    width: "100%", textAlign: "left", border: "none", cursor: "pointer",
-                    padding: "12px 16px",
-                    background: activeTab === m.id ? "#f0f4ff" : "transparent",
-                    borderRight: activeTab === m.id ? "2px solid #2563eb" : "2px solid transparent",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <span style={{
-                    fontSize: 13, fontWeight: activeTab === m.id ? 600 : 400,
-                    color: activeTab === m.id ? "#2563eb" : "#444",
-                  }}>{m.label}</span>
-                  <div style={{ display: "flex", gap: 2, marginTop: 4 }}>
-                    {m.icons.map((ic, i) => <span key={i} style={{ fontSize: 9 }}>{ic}</span>)}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Content area */}
-            <div style={{ flex: 1, padding: "20px", display: "flex", flexDirection: "column" }}>
-
-              {/* Cards tab (demo) */}
-              {activeTab === "cards" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div style={{
-                    background: "#fffbeb", border: "1px solid #fde68a",
-                    borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400e",
-                  }}>
-                    🧪 <strong>Test Mode</strong> — Real Razorpay blocked this domain. Clicking Pay below will activate your subscription directly.
-                  </div>
-
-                  {/* Card number */}
-                  <div>
-                    <label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 6 }}>Card Number</label>
-                    <div style={{
-                      border: "1.5px solid #e0e0e0", borderRadius: 8, padding: "10px 14px",
-                      fontSize: 15, fontFamily: "monospace", color: "#1a1a1a",
-                      background: "#fafafa", letterSpacing: 2,
-                    }}>4111 1111 1111 1111</div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 6 }}>Expiry</label>
-                      <div style={{
-                        border: "1.5px solid #e0e0e0", borderRadius: 8, padding: "10px 14px",
-                        fontSize: 14, color: "#1a1a1a", background: "#fafafa",
-                      }}>12 / 29</div>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 6 }}>CVV</label>
-                      <div style={{
-                        border: "1.5px solid #e0e0e0", borderRadius: 8, padding: "10px 14px",
-                        fontSize: 14, color: "#1a1a1a", background: "#fafafa",
-                      }}>•••</div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 6 }}>Name on Card</label>
-                    <div style={{
-                      border: "1.5px solid #e0e0e0", borderRadius: 8, padding: "10px 14px",
-                      fontSize: 14, color: "#1a1a1a", background: "#fafafa",
-                    }}>Test User</div>
-                  </div>
-
-                  <button
-                    className="rzp-pay-btn"
-                    onClick={onPay}
-                    disabled={processing}
-                    style={{
-                      width: "100%", padding: "13px 0", borderRadius: 8, border: "none",
-                      background: processing ? "#93c5fd" : "#2563eb",
-                      color: "#fff", fontWeight: 700, fontSize: 15,
-                      cursor: processing ? "default" : "pointer",
-                      marginTop: 4,
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                      transition: "background 0.2s",
-                    }}
-                  >
-                    {processing ? (
-                      <>
-                        <div style={{
-                          width: 16, height: 16, borderRadius: "50%",
-                          border: "2px solid rgba(255,255,255,0.3)",
-                          borderTop: "2px solid #fff",
-                          animation: "spin 0.7s linear infinite",
-                        }} />
-                        Processing…
-                      </>
-                    ) : `Pay ₹${amountDisplay}`}
-                  </button>
-                </div>
-              )}
-
-              {/* UPI tab */}
-              {activeTab === "upi" && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 12 }}>
-                  <p style={{ fontWeight: 600, fontSize: 14, color: "#333", margin: 0 }}>UPI QR Code</p>
-                  {/* Fake QR */}
-                  <div style={{
-                    width: 140, height: 140, background: "#f5f5f5",
-                    border: "1px solid #e0e0e0", borderRadius: 8,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    color: "#bbb", fontSize: 12, textAlign: "center", padding: 10,
-                  }}>
-                    QR not available<br/>in demo mode
-                  </div>
-                  <p style={{ color: "#888", fontSize: 13, textAlign: "center", margin: 0 }}>
-                    Switch to <strong>Cards</strong> tab to complete the demo payment
-                  </p>
-                  <button
-                    onClick={() => setActiveTab("cards")}
-                    style={{
-                      background: "#2563eb", color: "#fff", border: "none",
-                      borderRadius: 8, padding: "10px 24px", fontWeight: 600,
-                      fontSize: 14, cursor: "pointer",
-                    }}
-                  >Use Cards instead</button>
-                </div>
-              )}
-
-              {/* Other tabs */}
-              {!["cards","upi"].includes(activeTab) && (
+          {/* Pay button */}
+          <button
+            onClick={onPay}
+            disabled={processing}
+            style={{
+              width: "100%", padding: "13px 0",
+              borderRadius: 9999, border: "none",
+              background: processing ? "rgba(29,155,240,0.5)" : "#1d9bf0",
+              color: "#fff", fontWeight: 700, fontSize: 15,
+              cursor: processing ? "default" : "pointer",
+              marginBottom: 12,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+              transition: "background 0.2s, transform 0.15s",
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onMouseEnter={e => { if (!processing) e.currentTarget.style.transform = "scale(1.02)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+          >
+            {processing ? (
+              <>
                 <div style={{
-                  flex: 1, display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center", gap: 12,
-                }}>
-                  <div style={{ fontSize: 40 }}>🚧</div>
-                  <p style={{ color: "#666", fontSize: 14, textAlign: "center", margin: 0 }}>
-                    This method is not available in demo mode.<br/>
-                    <span
-                      onClick={() => setActiveTab("cards")}
-                      style={{ color: "#2563eb", cursor: "pointer", fontWeight: 600 }}
-                    >
-                      Use Cards tab instead →
-                    </span>
-                  </p>
-                </div>
-              )}
+                  width: 15, height: 15, borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTop: "2px solid #fff",
+                  animation: "spin 0.7s linear infinite",
+                }} />
+                Processing…
+              </>
+            ) : `Proceed with Demo Payment · ₹${amountDisplay}`}
+          </button>
 
-            </div>
-          </div>
+          {/* Go back */}
+          <button
+            onClick={onClose}
+            disabled={processing}
+            style={{
+              width: "100%", padding: "10px 0",
+              background: "none", border: "none",
+              color: "rgba(255,255,255,0.35)", fontSize: 14,
+              cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              transition: "color 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,255,255,0.6)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+          >
+            Go Back
+          </button>
         </div>
       </div>
     </div>
