@@ -1,14 +1,15 @@
-import dns from 'dns';
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+import dotenv from "dotenv";
+dotenv.config(); // ✅ MUST be first — before any process.env access
+
+import dns from "dns";
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
-import { Resend } from "resend";
-const resend = new Resend(process.env.RESEND_API_KEY);
+import nodemailer from "nodemailer";
 import Razorpay from "razorpay";
 import { UAParser } from "ua-parser-js";
 
@@ -18,43 +19,45 @@ import LoginLog from "./modals/loginLog.js";
 import Subscription from "./modals/subscription.js";
 import { verifyToken } from "./middleware/auth.js";
 
-dotenv.config();
+// ── Debug env on startup ──────────────────────────────────────────────────────
+console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
+console.log("📧 EMAIL_PASS length:", process.env.EMAIL_PASS?.replace(/\s/g, "").length);
 
+// ── Cloudinary ────────────────────────────────────────────────────────────────
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// ── Razorpay ──────────────────────────────────────────────────────────────────
 const razorpay = new Razorpay({
   key_id:     process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// ── Nodemailer — verify config on startup ─────────────────────────────────────
-// const transporter = nodemailer.createTransport({
-//   host:   "smtp.gmail.com",
-//   port:   587,
-//   secure: false,
-//   family: 4,  // ← force IPv4 — Render free tier blocks IPv6 outbound
-//   auth: {
-//     user: process.env.EMAIL_USER,
-//     pass: process.env.EMAIL_PASS,
-//   },
-//   tls: { rejectUnauthorized: false },
-// });
+// ── Gmail SMTP transporter ────────────────────────────────────────────────────
+const mailTransport = nodemailer.createTransport({
+  host:   "smtp.gmail.com",
+  port:   587,
+  secure: false,
+  family: 4,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS?.replace(/\s/g, ""), // strip spaces just in case
+  },
+});
 
-// transporter.verify((error) => {
-//   if (error) {
-//     console.error("❌ Nodemailer config error:", error.message);
-//   } else {
-//     console.log("✅ Nodemailer ready — emails will send");
-//   }
-// });
+mailTransport.verify((err) => {
+  if (err) console.error("❌ Gmail SMTP error:", err.message);
+  else     console.log("✅ Gmail email ready");
+});
 
+// ── Multer ────────────────────────────────────────────────────────────────────
 const upload      = multer();
 const audioUpload = multer({ limits: { fileSize: 100 * 1024 * 1024 } });
 
+// ── Plans & OTP store ─────────────────────────────────────────────────────────
 const PLANS = {
   bronze: { price: 10000,  limit: 3  },
   silver: { price: 30000,  limit: 5  },
@@ -63,21 +66,20 @@ const PLANS = {
 
 const otpStore = new Map();
 
+// ── Express app ───────────────────────────────────────────────────────────────
 const app = express();
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
-  'http://localhost:3000',
-  'https://twitter-clone-lime-alpha.vercel.app'
+  "http://localhost:3000",
+  "https://twitter-clone-lime-alpha.vercel.app",
 ].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    // Allow exact matches
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    // Allow ALL Vercel preview deployments for this project
-    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    if (origin.endsWith(".vercel.app")) return callback(null, true);
     callback(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,
@@ -87,6 +89,7 @@ app.use(express.json({ limit: "10mb" }));
 
 app.get("/", (req, res) => res.send("Twiller backend is running ✅"));
 
+// ── MongoDB + server start ────────────────────────────────────────────────────
 mongoose
   .connect(process.env.MONGODB_URL)
   .then(() => {
@@ -218,23 +221,22 @@ app.get("/post", async (req, res) => {
 app.patch("/post/:id", verifyToken, async (req, res) => {
   try {
     const content = (req.body.content || "").trim();
-    if (!content)          return res.status(400).send({ error: "Content cannot be empty" });
+    if (!content)             return res.status(400).send({ error: "Content cannot be empty" });
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
- 
+
     const dbUser = await User.findOne({ email: req.user.email });
     if (!dbUser) return res.status(404).send({ error: "User not found" });
- 
+
     const tweet = await Tweet.findById(req.params.id);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
- 
-    // Only the author may edit their own tweet
+
     if (tweet.author.toString() !== dbUser._id.toString())
       return res.status(403).send({ error: "Forbidden — you can only edit your own tweets" });
- 
+
     tweet.content = content;
-    tweet.edited  = true;          // marks the tweet as edited (see schema note below)
+    tweet.edited  = true;
     await tweet.save();
- 
+
     const populated = await tweet.populate("author");
     return res.status(200).send(populated);
   } catch (error) {
@@ -335,10 +337,9 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
 app.post("/send-otp", verifyToken, async (req, res) => {
   try {
     console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
-    console.log("📧 EMAIL_PASS configured:", !!process.env.EMAIL_PASS);
     console.log("📧 Sending OTP to:", req.user.email);
 
-    // Rate limit: only send one OTP per email per 60 seconds
+    // Rate limit: 1 OTP per email per 60 seconds
     const existing = otpStore.get(req.user.email);
     if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 60_000) {
       console.log("⏳ OTP rate limited — already sent within 60s");
@@ -352,18 +353,18 @@ app.post("/send-otp", verifyToken, async (req, res) => {
       createdAt: Date.now(),
     });
 
-    await resend.emails.send({
-  from:    "Twiller <onboarding@resend.dev>",
-  to:      req.user.email,
-  subject: "Your Twiller verification code",
-  html: `
-    <div style="font-family:sans-serif;max-width:400px;padding:24px;background:#f9f9f9;border-radius:12px">
-      <h2 style="color:#1d9bf0;margin:0 0 16px">Twiller — Verify your login</h2>
-      <p style="color:#333;margin:0 0 8px">Your one-time verification code:</p>
-      <div style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#000;padding:20px 0;text-align:center">${otp}</div>
-      <p style="color:#888;font-size:13px;margin:16px 0 0">Expires in 10 minutes. Do not share this code.</p>
-    </div>`,
-});
+    await mailTransport.sendMail({
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
+      to:      req.user.email,
+      subject: "Your Twiller verification code",
+      html: `
+        <div style="font-family:sans-serif;max-width:400px;padding:24px;background:#f9f9f9;border-radius:12px">
+          <h2 style="color:#1d9bf0;margin:0 0 16px">Twiller — Verify your login</h2>
+          <p style="color:#333;margin:0 0 8px">Your one-time verification code:</p>
+          <div style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#000;padding:20px 0;text-align:center">${otp}</div>
+          <p style="color:#888;font-size:13px;margin:16px 0 0">Expires in 10 minutes. Do not share this code.</p>
+        </div>`,
+    });
 
     console.log("✅ OTP sent successfully to", req.user.email);
     return res.json({ message: "OTP sent to your email" });
@@ -374,7 +375,7 @@ app.post("/send-otp", verifyToken, async (req, res) => {
       command:  error.command,
       response: error.response,
     });
-    return res.status(500).json({ error: "Failed to send OTP" });
+    return res.status(500).json({ error: "Failed to send OTP", detail: error.message });
   }
 });
 
@@ -406,7 +407,6 @@ app.post("/login-event", verifyToken, async (req, res) => {
                         browserLower.includes("trident") ||
                         browserLower.includes("ie");
 
-    // Mobile time restriction: 10AM–1PM IST only
     if (deviceType === "mobile") {
       const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
       const hour = now.getHours();
@@ -461,14 +461,8 @@ app.get("/subscription", verifyToken, async (req, res) => {
 
 app.post("/create-order", verifyToken, async (req, res) => {
   try {
-    // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    // const hour = now.getHours();
-    // if (hour < 10 || hour >= 11)
-    //   return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
-
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
-
     const order = await razorpay.orders.create({
       amount:   plan.price,
       currency: "INR",
@@ -480,7 +474,6 @@ app.post("/create-order", verifyToken, async (req, res) => {
   }
 });
 
-// ── DEMO MODE: bypasses Razorpay signature for deployed demo ──────────────────
 app.post("/demo-payment", verifyToken, async (req, res) => {
   if (process.env.DEMO_MODE !== "true")
     return res.status(403).json({ error: "Demo mode not enabled" });
@@ -500,9 +493,8 @@ app.post("/demo-payment", verifyToken, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Send invoice email same as real payment
-    await resend.emails.send({
-      from:    "Twiller <onboarding@resend.dev>",
+    await mailTransport.sendMail({
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
       to:      user.email,
       subject: "Twiller — Subscription Invoice (Demo)",
       html: `
@@ -549,22 +541,22 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    await resend.emails.send({
-  from:    "Twiller <onboarding@resend.dev>",
-  to:      user.email,
-  subject: "Twiller — Subscription Invoice",
-  html: `
-    <div style="font-family:sans-serif;max-width:500px;padding:24px">
-      <h1 style="color:#1d9bf0">Twiller</h1>
-      <h2>Thank you for subscribing! 🎉</h2>
-      <table style="border-collapse:collapse;width:100%">
-        <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
-        <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
-        <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
-        <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
-      </table>
-    </div>`,
-});
+    await mailTransport.sendMail({
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
+      to:      user.email,
+      subject: "Twiller — Subscription Invoice",
+      html: `
+        <div style="font-family:sans-serif;max-width:500px;padding:24px">
+          <h1 style="color:#1d9bf0">Twiller</h1>
+          <h2>Thank you for subscribing! 🎉</h2>
+          <table style="border-collapse:collapse;width:100%">
+            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
+          </table>
+        </div>`,
+    });
 
     return res.json({ message: "Payment verified and subscription activated", plan });
   } catch (error) {
