@@ -1,9 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config(); // ✅ MUST be first — before any process.env access
 
-import { setDefaultResultOrder } from "dns";
-setDefaultResultOrder("ipv4first"); // ✅ force IPv4 — fixes Render free tier IPv6 block
-
 import dns from "dns";
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
@@ -23,8 +20,8 @@ import Subscription from "./modals/subscription.js";
 import { verifyToken } from "./middleware/auth.js";
 
 // ── Debug env on startup ──────────────────────────────────────────────────────
-console.log("📧 BREVO_SMTP_USER configured:", !!process.env.BREVO_SMTP_USER);
-console.log("📧 BREVO_SMTP_PASS configured:", !!process.env.BREVO_SMTP_PASS);
+console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
+console.log("📧 EMAIL_PASS length:", process.env.EMAIL_PASS?.replace(/\s/g, "").length);
 
 // ── Cloudinary ────────────────────────────────────────────────────────────────
 cloudinary.config({
@@ -39,21 +36,21 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// ── Brevo SMTP — works on Render free tier (IPv4, no IPv6 block) ──────────────
+// ── Gmail SMTP transporter ────────────────────────────────────────────────────
 const mailTransport = nodemailer.createTransport({
-  host:   "smtp-relay.brevo.com",
+  host:   "smtp.gmail.com",
   port:   587,
   secure: false,
   family: 4,
   auth: {
-    user: process.env.BREVO_SMTP_USER,
-    pass: process.env.BREVO_SMTP_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS?.replace(/\s/g, ""), // strip spaces just in case
   },
 });
 
 mailTransport.verify((err) => {
-  if (err) console.error("❌ Brevo SMTP error:", err.message);
-  else     console.log("✅ Brevo email ready — all emails will send");
+  if (err) console.error("❌ Gmail SMTP error:", err.message);
+  else     console.log("✅ Gmail email ready");
 });
 
 // ── Multer ────────────────────────────────────────────────────────────────────
@@ -339,8 +336,10 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
 
 app.post("/send-otp", verifyToken, async (req, res) => {
   try {
+    console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
     console.log("📧 Sending OTP to:", req.user.email);
 
+    // Rate limit: 1 OTP per email per 60 seconds
     const existing = otpStore.get(req.user.email);
     if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 60_000) {
       console.log("⏳ OTP rate limited — already sent within 60s");
@@ -355,7 +354,7 @@ app.post("/send-otp", verifyToken, async (req, res) => {
     });
 
     await mailTransport.sendMail({
-      from:    '"Twiller" <rutikphadtare1208@gmail.com>',
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
       to:      req.user.email,
       subject: "Your Twiller verification code",
       html: `
@@ -495,7 +494,7 @@ app.post("/demo-payment", verifyToken, async (req, res) => {
     );
 
     await mailTransport.sendMail({
-      from:    '"Twiller" <rutikphadtare1208@gmail.com>',
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
       to:      user.email,
       subject: "Twiller — Subscription Invoice (Demo)",
       html: `
@@ -543,7 +542,7 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
     );
 
     await mailTransport.sendMail({
-      from:    '"Twiller" <rutikphadtare1208@gmail.com>',
+      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
       to:      user.email,
       subject: "Twiller — Subscription Invoice",
       html: `
