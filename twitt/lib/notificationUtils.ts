@@ -7,6 +7,16 @@ export const ALL_CATEGORIES = [
   { id: "math",       label: "Math",       emoji: "📐" },
   { id: "technology", label: "Technology", emoji: "💻" },
   { id: "health",     label: "Health",     emoji: "💊" },
+  { id: "gaming",     label: "Gaming",     emoji: "🎮" },
+  { id: "entertainment", label: "Movies & TV", emoji: "🎬" },
+  { id: "music",      label: "Music",      emoji: "🎵" },
+  { id: "business",   label: "Business",   emoji: "📈" },
+  { id: "crypto",     label: "Crypto",     emoji: "₿" },
+  { id: "fashion",    label: "Fashion",    emoji: "✨" },
+  { id: "travel",     label: "Travel",     emoji: "✈️" },
+  { id: "food",       label: "Food",       emoji: "🍔" },
+  { id: "art",        label: "Art",        emoji: "🎨" },
+  { id: "education",  label: "Education",  emoji: "🎓" },
 ];
 
 const CATEGORIES_KEY    = "twiller-selected-categories";
