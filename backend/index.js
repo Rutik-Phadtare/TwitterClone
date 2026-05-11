@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config(); // ✅ MUST be first — before any process.env access
+dotenv.config();
 
 import dns from "dns";
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
@@ -9,7 +9,6 @@ import cors from "cors";
 import mongoose from "mongoose";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
-import nodemailer from "nodemailer";
 import Razorpay from "razorpay";
 import { UAParser } from "ua-parser-js";
 
@@ -19,9 +18,32 @@ import LoginLog from "./modals/loginLog.js";
 import Subscription from "./modals/subscription.js";
 import { verifyToken } from "./middleware/auth.js";
 
-// ── Debug env on startup ──────────────────────────────────────────────────────
-console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
-console.log("📧 EMAIL_PASS length:", process.env.EMAIL_PASS?.replace(/\s/g, "").length);
+console.log("📧 BREVO_API_KEY configured:", !!process.env.BREVO_API_KEY);
+
+// ── Brevo HTTP email sender (no SMTP — uses API, works on Render free tier) ───
+const sendEmail = async ({ to, subject, html }) => {
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method:  "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key":      process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender:   { name: "Twiller", email: process.env.BREVO_SENDER_EMAIL },
+      to:       [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(JSON.stringify(err));
+  }
+
+  console.log("✅ Email sent via Brevo API to:", to);
+  return res.json();
+};
 
 // ── Cloudinary ────────────────────────────────────────────────────────────────
 cloudinary.config({
@@ -34,23 +56,6 @@ cloudinary.config({
 const razorpay = new Razorpay({
   key_id:     process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
-
-// ── Gmail SMTP transporter ────────────────────────────────────────────────────
-const mailTransport = nodemailer.createTransport({
-  host:   "smtp.gmail.com",
-  port:   587,
-  secure: false,
-  family: 4,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS?.replace(/\s/g, ""), // strip spaces just in case
-  },
-});
-
-mailTransport.verify((err) => {
-  if (err) console.error("❌ Gmail SMTP error:", err.message);
-  else     console.log("✅ Gmail email ready");
 });
 
 // ── Multer ────────────────────────────────────────────────────────────────────
@@ -86,10 +91,9 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: "10mb" }));
-
 app.get("/", (req, res) => res.send("Twiller backend is running ✅"));
 
-// ── MongoDB + server start ────────────────────────────────────────────────────
+// ── MongoDB ───────────────────────────────────────────────────────────────────
 mongoose
   .connect(process.env.MONGODB_URL)
   .then(() => {
@@ -111,14 +115,7 @@ app.post("/register", verifyToken, async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       { email: req.user.email },
-      {
-        $setOnInsert: {
-          email:      req.user.email,
-          name:       req.body.name       || req.user.name    || "",
-          profilePic: req.body.profilePic || req.user.picture || "",
-          ...req.body,
-        },
-      },
+      { $setOnInsert: { email: req.user.email, name: req.body.name || req.user.name || "", profilePic: req.body.profilePic || req.user.picture || "", ...req.body } },
       { upsert: true, new: true }
     );
     return res.status(200).send(user);
@@ -171,27 +168,14 @@ app.post("/post", verifyToken, async (req, res) => {
     const tweetsUsed = sub?.tweetsUsed ?? 0;
 
     if (tweetLimit !== -1 && tweetsUsed >= tweetLimit) {
-      return res.status(403).send({
-        error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.`,
-      });
+      return res.status(403).send({ error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.` });
     }
 
-    const tweet = new Tweet({
-      content,
-      image:  req.body.image || null,
-      audio:  req.body.audio || null,
-      author: dbUser._id,
-    });
+    const tweet = new Tweet({ content, image: req.body.image || null, audio: req.body.audio || null, author: dbUser._id });
     await tweet.save();
 
-    if (sub) {
-      sub.tweetsUsed += 1;
-      await sub.save();
-    } else {
-      await Subscription.create({
-        userId: dbUser._id, plan: "free", tweetLimit: 1, tweetsUsed: 1,
-      });
-    }
+    if (sub) { sub.tweetsUsed += 1; await sub.save(); }
+    else { await Subscription.create({ userId: dbUser._id, plan: "free", tweetLimit: 1, tweetsUsed: 1 }); }
 
     const populated = await tweet.populate("author");
     return res.status(201).send(populated);
@@ -205,10 +189,7 @@ app.get("/post", async (req, res) => {
   try {
     const { cursor, limit = 20 } = req.query;
     const query = cursor ? { _id: { $lt: cursor } } : {};
-    const tweets = await Tweet.find(query)
-      .sort({ _id: -1 })
-      .limit(Number(limit))
-      .populate("author");
+    const tweets = await Tweet.find(query).sort({ _id: -1 }).limit(Number(limit)).populate("author");
     return res.status(200).send({
       tweets,
       nextCursor: tweets.length === Number(limit) ? tweets[tweets.length - 1]._id : null,
@@ -223,24 +204,32 @@ app.patch("/post/:id", verifyToken, async (req, res) => {
     const content = (req.body.content || "").trim();
     if (!content)             return res.status(400).send({ error: "Content cannot be empty" });
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
-
     const dbUser = await User.findOne({ email: req.user.email });
     if (!dbUser) return res.status(404).send({ error: "User not found" });
-
     const tweet = await Tweet.findById(req.params.id);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
-
     if (tweet.author.toString() !== dbUser._id.toString())
       return res.status(403).send({ error: "Forbidden — you can only edit your own tweets" });
-
     tweet.content = content;
     tweet.edited  = true;
     await tweet.save();
-
     const populated = await tweet.populate("author");
     return res.status(200).send(populated);
   } catch (error) {
-    console.error("🔴 PATCH /post/:id error:", error.message);
+    return res.status(400).send({ error: error.message });
+  }
+});
+
+app.delete("/post/:id", verifyToken, async (req, res) => {
+  try {
+    const dbUser = await User.findOne({ email: req.user.email });
+    const tweet  = await Tweet.findById(req.params.id);
+    if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+    if (tweet.author.toString() !== dbUser._id.toString())
+      return res.status(403).send({ error: "Forbidden" });
+    await Tweet.findByIdAndDelete(req.params.id);
+    return res.status(200).send({ message: "Tweet deleted" });
+  } catch (error) {
     return res.status(400).send({ error: error.message });
   }
 });
@@ -298,12 +287,9 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
     if (!req.file) return res.status(400).json({ error: "No file provided" });
     const b64     = Buffer.from(req.file.buffer).toString("base64");
     const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    const result  = await cloudinary.uploader.upload(dataURI, {
-      folder: "twiller", resource_type: "image",
-    });
+    const result  = await cloudinary.uploader.upload(dataURI, { folder: "twiller", resource_type: "image" });
     return res.json({ url: result.secure_url });
   } catch (error) {
-    console.error("Image upload error:", error);
     return res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -311,15 +297,12 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const hour = now.getHours();
-  if (hour < 14 || hour >= 19)
-    return res.status(403).json({ error: "Audio uploads only allowed 2PM–7PM IST" });
+  if (hour < 14 || hour >= 19) return res.status(403).json({ error: "Audio uploads only allowed 2PM–7PM IST" });
   if (!req.file) return res.status(400).json({ error: "No audio file" });
   try {
     const b64     = Buffer.from(req.file.buffer).toString("base64");
     const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    const result  = await cloudinary.uploader.upload(dataURI, {
-      resource_type: "video", folder: "twiller-audio",
-    });
+    const result  = await cloudinary.uploader.upload(dataURI, { resource_type: "video", folder: "twiller-audio" });
     if (result.duration > 300) {
       await cloudinary.uploader.destroy(result.public_id, { resource_type: "video" });
       return res.status(400).json({ error: "Audio must be under 5 minutes" });
@@ -331,15 +314,13 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OTP ROUTES
+// OTP ROUTES — using Brevo HTTP API (no SMTP needed)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post("/send-otp", verifyToken, async (req, res) => {
   try {
-    console.log("📧 EMAIL_USER configured:", !!process.env.EMAIL_USER);
     console.log("📧 Sending OTP to:", req.user.email);
 
-    // Rate limit: 1 OTP per email per 60 seconds
     const existing = otpStore.get(req.user.email);
     if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 60_000) {
       console.log("⏳ OTP rate limited — already sent within 60s");
@@ -347,14 +328,9 @@ app.post("/send-otp", verifyToken, async (req, res) => {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(req.user.email, {
-      otp,
-      expires:   Date.now() + 10 * 60 * 1000,
-      createdAt: Date.now(),
-    });
+    otpStore.set(req.user.email, { otp, expires: Date.now() + 10 * 60 * 1000, createdAt: Date.now() });
 
-    await mailTransport.sendMail({
-      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
+    await sendEmail({
       to:      req.user.email,
       subject: "Your Twiller verification code",
       html: `
@@ -366,15 +342,9 @@ app.post("/send-otp", verifyToken, async (req, res) => {
         </div>`,
     });
 
-    console.log("✅ OTP sent successfully to", req.user.email);
     return res.json({ message: "OTP sent to your email" });
   } catch (error) {
-    console.error("❌ OTP send error:", {
-      message:  error.message,
-      code:     error.code,
-      command:  error.command,
-      response: error.response,
-    });
+    console.error("❌ OTP send error:", error.message);
     return res.status(500).json({ error: "Failed to send OTP", detail: error.message });
   }
 });
@@ -397,24 +367,17 @@ app.post("/login-event", verifyToken, async (req, res) => {
     const browser    = ua.getBrowser().name  || "Unknown";
     const os         = ua.getOS().name       || "Unknown";
     const deviceType = ua.getDevice().type   || "desktop";
-    const ip         = req.headers["x-forwarded-for"]?.split(",")[0]
-                       || req.socket.remoteAddress;
-
+    const ip         = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
     const browserLower = (browser || "").toLowerCase();
 
-    const isMicrosoft = browserLower.includes("edge")    ||
-                        browserLower.includes("msie")    ||
-                        browserLower.includes("trident") ||
-                        browserLower.includes("ie");
+    const isMicrosoft = browserLower.includes("edge") || browserLower.includes("msie") ||
+                        browserLower.includes("trident") || browserLower.includes("ie");
 
     if (deviceType === "mobile") {
       const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
       const hour = now.getHours();
-      if (hour < 10 || hour >= 13) {
-        return res.status(403).json({
-          error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST.",
-        });
-      }
+      if (hour < 10 || hour >= 13)
+        return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
     }
 
     const user = await User.findOne({ email: req.user.email });
@@ -422,12 +385,10 @@ app.post("/login-event", verifyToken, async (req, res) => {
 
     await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
 
-    const isChromium  = (browserLower.includes("chrome") || browserLower.includes("chromium"))
-                        && !isMicrosoft;
+    const isChromium  = (browserLower.includes("chrome") || browserLower.includes("chromium")) && !isMicrosoft;
     const requiresOtp = isChromium;
 
     console.log(`🔐 login-event: browser=${browser} device=${deviceType} requiresOtp=${requiresOtp} isMicrosoft=${isMicrosoft}`);
-
     return res.json({ requiresOtp, browser, os, device: deviceType, isMicrosoft });
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -437,8 +398,7 @@ app.post("/login-event", verifyToken, async (req, res) => {
 app.get("/login-history", verifyToken, async (req, res) => {
   try {
     const user = await User.findOne({ email: req.user.email });
-    const logs = await LoginLog.find({ userId: user._id })
-      .sort({ timestamp: -1 }).limit(20);
+    const logs = await LoginLog.find({ userId: user._id }).sort({ timestamp: -1 }).limit(20);
     return res.json(logs);
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -463,11 +423,7 @@ app.post("/create-order", verifyToken, async (req, res) => {
   try {
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
-    const order = await razorpay.orders.create({
-      amount:   plan.price,
-      currency: "INR",
-      receipt:  `receipt_${Date.now()}`,
-    });
+    const order = await razorpay.orders.create({ amount: plan.price, currency: "INR", receipt: `receipt_${Date.now()}` });
     return res.json({ orderId: order.id, amount: plan.price });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -477,40 +433,23 @@ app.post("/create-order", verifyToken, async (req, res) => {
 app.post("/demo-payment", verifyToken, async (req, res) => {
   if (process.env.DEMO_MODE !== "true")
     return res.status(403).json({ error: "Demo mode not enabled" });
-
   try {
     const { plan } = req.body;
     const planData = PLANS[plan];
     if (!planData) return res.status(400).json({ error: "Invalid plan" });
-
     const user      = await User.findOne({ email: req.user.email });
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const fakePid   = `demo_pay_${Date.now()}`;
-
     await Subscription.findOneAndUpdate(
       { userId: user._id },
       { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
       { upsert: true, new: true }
     );
-
-    await mailTransport.sendMail({
-      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
+    await sendEmail({
       to:      user.email,
       subject: "Twiller — Subscription Invoice (Demo)",
-      html: `
-        <div style="font-family:sans-serif;max-width:500px;padding:24px">
-          <h1 style="color:#1d9bf0">Twiller</h1>
-          <h2>Thank you for subscribing! 🎉</h2>
-          <p style="color:#888">(Demo mode — no real money charged)</p>
-          <table style="border-collapse:collapse;width:100%">
-            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${fakePid}</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
-          </table>
-        </div>`,
+      html: `<div style="font-family:sans-serif;max-width:500px;padding:24px"><h1 style="color:#1d9bf0">Twiller</h1><h2>Thank you for subscribing! 🎉</h2><p style="color:#888">(Demo mode — no real money charged)</p><table style="border-collapse:collapse;width:100%"><tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr><tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr><tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${fakePid}</td></tr><tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr></table></div>`,
     });
-
     return res.json({ message: "Demo payment successful", plan, paymentId: fakePid });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -520,44 +459,25 @@ app.post("/demo-payment", verifyToken, async (req, res) => {
 app.post("/verify-payment", verifyToken, async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan } = req.body;
-
     const crypto   = await import("crypto");
     const expected = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
     if (expected !== razorpay_signature)
       return res.status(400).json({ error: "Invalid payment signature" });
-
     const user     = await User.findOne({ email: req.user.email });
     const planData = PLANS[plan];
     if (!planData) return res.status(400).json({ error: "Invalid plan" });
-
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
     await Subscription.findOneAndUpdate(
       { userId: user._id },
       { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
       { upsert: true, new: true }
     );
-
-    await mailTransport.sendMail({
-      from:    `"Twiller" <${process.env.EMAIL_USER}>`,
+    await sendEmail({
       to:      user.email,
       subject: "Twiller — Subscription Invoice",
-      html: `
-        <div style="font-family:sans-serif;max-width:500px;padding:24px">
-          <h1 style="color:#1d9bf0">Twiller</h1>
-          <h2>Thank you for subscribing! 🎉</h2>
-          <table style="border-collapse:collapse;width:100%">
-            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
-            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
-          </table>
-        </div>`,
+      html: `<div style="font-family:sans-serif;max-width:500px;padding:24px"><h1 style="color:#1d9bf0">Twiller</h1><h2>Thank you for subscribing! 🎉</h2><table style="border-collapse:collapse;width:100%"><tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr><tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr><tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr><tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr></table></div>`,
     });
-
     return res.json({ message: "Payment verified and subscription activated", plan });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -567,9 +487,7 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
 app.get("/suggested-users", verifyToken, async (req, res) => {
   try {
     const users = await User.find({ email: { $ne: req.user.email } })
-      .select("displayName email avatar username")
-      .limit(5)
-      .lean();
+      .select("displayName email avatar username").limit(5).lean();
     return res.json(users);
   } catch (error) {
     return res.status(400).json({ error: error.message });
