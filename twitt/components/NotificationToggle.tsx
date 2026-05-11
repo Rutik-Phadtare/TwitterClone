@@ -1,69 +1,72 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import { Bell, BellOff, AlertCircle, CheckCircle } from "lucide-react";
-import { requestNotificationPermission, areNotificationsEnabled } from "@/lib/notificationUtils";
+import React, { useState, useEffect, useRef } from "react";
+import { Bell, BellOff, ChevronDown, AlertCircle, CheckCircle } from "lucide-react";
+import {
+  requestNotificationPermission,
+  areNotificationsEnabled,
+  getSelectedCategories,
+  setSelectedCategories,
+  ALL_CATEGORIES,
+} from "@/lib/notificationUtils";
 
 const STYLES = `
   @keyframes nt-fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .nt-root {
-    font-family: 'DM Sans', sans-serif;
-    animation: nt-fadeIn 0.3s ease both;
-  }
+
   .nt-track {
-    position: relative;
-    width: 44px; height: 24px;
-    border-radius: 12px;
-    cursor: pointer;
-    border: none;
-    transition: background 0.25s ease;
-    flex-shrink: 0;
+    position: relative; width: 36px; height: 20px;
+    border-radius: 10px; cursor: pointer; border: none;
+    transition: background 0.25s ease; flex-shrink: 0;
   }
   .nt-thumb {
-    position: absolute;
-    top: 3px; left: 3px;
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    background: #fff;
-    transition: transform 0.25s cubic-bezier(0.22,1,0.36,1),
-                box-shadow 0.25s ease;
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    transition: transform 0.25s cubic-bezier(0.22,1,0.36,1);
     box-shadow: 0 1px 4px rgba(0,0,0,0.3);
   }
   .nt-track.on  { background: #1d9bf0; }
-  .nt-track.off { background: rgba(255,255,255,0.2); }
-  .nt-track.on  .nt-thumb { transform: translateX(20px); }
-  .nt-track:hover { opacity: 0.85; }
+  .nt-track.off { background: rgba(255,255,255,0.18); }
+  .nt-track.on  .nt-thumb { transform: translateX(16px); }
 
-  .nt-keyword {
-    display: inline-flex; align-items: center;
-    padding: 3px 10px; border-radius: 9999px;
-    font-size: 12px; font-weight: 600;
-    background: rgba(29,155,240,0.1);
-    border: 1px solid rgba(29,155,240,0.25);
-    color: #1d9bf0;
-    transition: background 0.15s;
-  }
-  .nt-keyword:hover {
-    background: rgba(29,155,240,0.18);
+  .nt-dropdown {
+    animation: nt-fadeIn 0.18s ease both;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
   }
 
-  .nt-status {
-    display: flex; align-items: center; gap: 7px;
-    padding: 10px 14px; border-radius: 10px;
-    font-size: 13px; font-weight: 500;
-    animation: nt-fadeIn 0.25s ease both;
+  .nt-cat-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 9999px; cursor: pointer;
+    font-size: 12px; font-weight: 600; border: 1.5px solid;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.12s ease; user-select: none;
   }
-  .nt-status.granted  { background: rgba(29,155,240,0.08); color: #1d9bf0; border: 1px solid rgba(29,155,240,0.2); }
-  .nt-status.denied   { background: rgba(239,68,68,0.08);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-  .nt-status.default  { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.1); }
+  .nt-cat-chip.on {
+    background: rgba(29,155,240,0.12);
+    border-color: #1d9bf0; color: #1d9bf0;
+  }
+  .nt-cat-chip.off {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.4);
+  }
+  .nt-cat-chip.off:hover {
+    border-color: rgba(255,255,255,0.22);
+    color: rgba(255,255,255,0.7);
+    background: rgba(255,255,255,0.06);
+  }
+  .nt-cat-chip.on:hover { background: rgba(29,155,240,0.2); }
 `;
 
 export default function NotificationToggle() {
+  const [open,       setOpen]       = useState(false);
   const [enabled,    setEnabled]    = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [selected,   setSelected]   = useState<string[]>([]);
+  const [minError,   setMinError]   = useState(false);
   const [mounted,    setMounted]    = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -71,6 +74,18 @@ export default function NotificationToggle() {
       setPermission(Notification.permission);
       setEnabled(areNotificationsEnabled());
     }
+    setSelected(getSelectedCategories());
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   if (!mounted) return null;
@@ -79,121 +94,171 @@ export default function NotificationToggle() {
 
   const handleToggle = async () => {
     if (!browserSupports) return;
-
     if (!enabled) {
-      // Turning ON — request permission first
       const granted = await requestNotificationPermission();
       if (granted) {
         setEnabled(true);
         setPermission("granted");
         localStorage.setItem("twiller-notifications-enabled", "true");
-
-        // Send a test notification so user knows it works
-        new Notification("🔔 Twiller notifications enabled!", {
-          body: "You'll be notified when tweets mention cricket or science.",
+        new Notification("🔔 Twiller notifications on!", {
+          body: `Watching: ${selected.join(", ")}`,
           icon: "/favicon.ico",
-          tag: "twiller-test",
+          tag:  "twiller-test",
         });
       } else {
         setPermission(Notification.permission as NotificationPermission);
       }
     } else {
-      // Turning OFF — just update preference, can't revoke browser permission
       setEnabled(false);
       localStorage.setItem("twiller-notifications-enabled", "false");
     }
   };
 
+  const toggleCategory = (catId: string) => {
+    setMinError(false);
+    setSelected(prev => {
+      if (prev.includes(catId)) {
+        if (prev.length <= 2) { setMinError(true); return prev; }
+        const next = prev.filter(c => c !== catId);
+        setSelectedCategories(next);
+        return next;
+      } else {
+        const next = [...prev, catId];
+        setSelectedCategories(next);
+        return next;
+      }
+    });
+  };
+
+  const statusColor = permission === "granted" && enabled
+    ? "#1d9bf0"
+    : permission === "denied"
+    ? "#ef4444"
+    : "rgba(255,255,255,0.35)";
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
-      <div className="nt-root" style={{
-        padding: "16px",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
-      }}>
 
-        {/* Header row */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div ref={dropRef} style={{ borderBottom: open ? "none" : "1px solid rgba(255,255,255,0.07)", fontFamily: "'DM Sans',sans-serif" }}>
+
+        {/* ── Compact trigger row ── */}
+        <div
+          onClick={() => setOpen(o => !o)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "10px 16px", cursor: "pointer",
+            transition: "background 0.15s",
+            background: open ? "rgba(255,255,255,0.02)" : "transparent",
+          }}
+          onMouseEnter={e => { if (!open) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+          onMouseLeave={e => { if (!open) e.currentTarget.style.background = "transparent"; }}
+        >
+          {/* Left: icon + label */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{
-              width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
-              background: enabled ? "rgba(29,155,240,0.12)" : "rgba(255,255,255,0.06)",
-              border: `1px solid ${enabled ? "rgba(29,155,240,0.3)" : "rgba(255,255,255,0.1)"}`,
+              width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+              background: enabled ? "rgba(29,155,240,0.1)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${enabled ? "rgba(29,155,240,0.25)" : "rgba(255,255,255,0.08)"}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "background 0.2s, border-color 0.2s",
             }}>
               {enabled
-                ? <Bell size={16} color="#1d9bf0" />
-                : <BellOff size={16} color="rgba(255,255,255,0.4)" />
+                ? <Bell size={13} color="#1d9bf0" />
+                : <BellOff size={13} color="rgba(255,255,255,0.35)" />
               }
             </div>
-            <div>
-              <p style={{ color: "#fff", margin: 0, fontWeight: 600, fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
-                Tweet notifications
-              </p>
-              <p style={{ color: "rgba(255,255,255,0.4)", margin: "2px 0 0", fontSize: 12, fontFamily: "'DM Sans',sans-serif" }}>
-                Get notified for trending topics
-              </p>
-            </div>
+            <span style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>Notifications</span>
+            {/* Status dot */}
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: statusColor, display: "inline-block",
+            }} />
+            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>
+              {selected.length} categories
+            </span>
           </div>
 
-          {/* Toggle switch */}
-          {browserSupports && (
-            <button
-              className={`nt-track ${enabled ? "on" : "off"}`}
-              onClick={handleToggle}
-              aria-label={enabled ? "Disable notifications" : "Enable notifications"}
-            >
-              <div className="nt-thumb" />
-            </button>
-          )}
-        </div>
-
-        {/* Permission status */}
-        <div style={{ marginTop: 12 }}>
-          {!browserSupports ? (
-            <div className="nt-status denied">
-              <AlertCircle size={14} />
-              Your browser doesn't support notifications
-            </div>
-          ) : permission === "granted" && enabled ? (
-            <div className="nt-status granted">
-              <CheckCircle size={14} />
-              Notifications are active
-            </div>
-          ) : permission === "denied" ? (
-            <div className="nt-status denied">
-              <AlertCircle size={14} />
-              Notifications blocked — enable in browser settings (🔒 in address bar)
-            </div>
-          ) : (
-            <div className="nt-status default">
-              <Bell size={14} />
-              Toggle on to enable notifications
-            </div>
-          )}
-        </div>
-
-        {/* Trigger keywords */}
-        <div style={{ marginTop: 14 }}>
-          <p style={{
-            color: "rgba(255,255,255,0.35)", fontSize: 11, margin: "0 0 8px",
-            textTransform: "uppercase", letterSpacing: 1, fontFamily: "'DM Sans',sans-serif",
-          }}>
-            Trigger keywords
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {["cricket", "science"].map(kw => (
-              <span key={kw} className="nt-keyword">#{kw}</span>
-            ))}
+          {/* Right: toggle + chevron */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {browserSupports && (
+              <button
+                className={`nt-track ${enabled ? "on" : "off"}`}
+                onClick={e => { e.stopPropagation(); handleToggle(); }}
+                aria-label="Toggle notifications"
+              >
+                <div className="nt-thumb" />
+              </button>
+            )}
+            <ChevronDown
+              size={14}
+              color="rgba(255,255,255,0.3)"
+              style={{
+                transition: "transform 0.2s",
+                transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
           </div>
-          <p style={{
-            color: "rgba(255,255,255,0.25)", fontSize: 11, margin: "10px 0 0",
-            fontFamily: "'DM Sans',sans-serif", lineHeight: 1.5,
-          }}>
-            Any tweet containing these words will trigger a browser popup notification.
-          </p>
         </div>
+
+        {/* ── Dropdown panel ── */}
+        {open && (
+          <div className="nt-dropdown" style={{ padding: "12px 16px 14px" }}>
+
+            {/* Permission status */}
+            {permission === "denied" ? (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+                background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.18)",
+                color: "#ef4444", fontSize: 12,
+              }}>
+                <AlertCircle size={12} />
+                Blocked — enable in browser settings (🔒 in address bar)
+              </div>
+            ) : permission === "granted" && enabled ? (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+                background: "rgba(29,155,240,0.07)", border: "1px solid rgba(29,155,240,0.18)",
+                color: "#1d9bf0", fontSize: 12,
+              }}>
+                <CheckCircle size={12} />
+                Active — popup alerts enabled
+              </div>
+            ) : null}
+
+            {/* Category label */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>
+                Alert categories
+              </span>
+              <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 11 }}>
+                {selected.length} / {ALL_CATEGORIES.length} selected
+              </span>
+            </div>
+
+            {/* Category chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {ALL_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  className={`nt-cat-chip ${selected.includes(cat.id) ? "on" : "off"}`}
+                  onClick={() => toggleCategory(cat.id)}
+                >
+                  <span style={{ fontSize: 12 }}>{cat.emoji}</span>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Min error */}
+            {minError && (
+              <p style={{ color: "#eab308", fontSize: 11, margin: "8px 0 0" }}>
+                ⚠ Minimum 2 categories required
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

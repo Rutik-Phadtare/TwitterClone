@@ -3,59 +3,100 @@ import React, { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
 import NotificationToggle from "../NotificationToggle";
 import axiosInstance from "@/lib/axiosInstance";
-import { TRIGGER_KEYWORDS, sendTweetNotification } from "@/lib/notificationUtils";
+import {
+  getSelectedCategories,
+  ALL_CATEGORIES,
+  setNotificationCount,
+} from "@/lib/notificationUtils";
 
 interface NotificationItem {
-  id: string;
-  type: "keyword";
+  id:      string;
+  type:    "keyword";
   keyword: string;
-  author: string;
+  author:  string;
   content: string;
-  avatar: string;
-  time: string;
+  avatar:  string;
+  time:    string;
 }
+
+// ── Persistent clear: store timestamp of last "Clear all" ─────────────────────
+const CLEARED_AT_KEY = "twiller-notifications-cleared-at";
+
+const getClearedAt = (): number => {
+  try { return parseInt(localStorage.getItem(CLEARED_AT_KEY) || "0", 10); }
+  catch { return 0; }
+};
+
+const saveClearedAt = () => {
+  localStorage.setItem(CLEARED_AT_KEY, Date.now().toString());
+};
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading,       setLoading]        = useState(true);
+  const [selected,      setSelected]       = useState<string[]>([]);
 
-  useEffect(() => {
-    // Load existing saved notifications from localStorage
-    const saved = localStorage.getItem("twiller-notification-history");
-    if (saved) {
-      try { setNotifications(JSON.parse(saved)); } catch {}
-    }
+  const fetchNotifications = () => {
+    setLoading(true);
+    const cats      = getSelectedCategories();
+    const clearedAt = getClearedAt();
+    setSelected(cats);
 
-    // Fetch tweets and find any matching keywords — build notification list
     axiosInstance.get("/post").then(res => {
-      const tweets = res.data.tweets ?? [];
+      const tweets  = res.data.tweets ?? [];
       const matched: NotificationItem[] = [];
 
       tweets.forEach((tweet: any) => {
-        const content = tweet.content || "";
-        const lower   = content.toLowerCase();
-        const keyword = TRIGGER_KEYWORDS.find(k => lower.includes(k));
-        if (keyword) {
-          matched.push({
-            id:      tweet._id,
-            type:    "keyword",
-            keyword,
-            author:  tweet.author?.displayName || "Someone",
-            content,
-            avatar:  tweet.author?.avatar || "",
-            time:    tweet.timestamp,
-          });
-        }
+        const content   = tweet.content || "";
+        const lower     = content.toLowerCase();
+        const tweetTime = new Date(tweet.timestamp).getTime();
+
+        // Skip anything before last "Clear all"
+        if (tweetTime <= clearedAt) return;
+
+        // ✅ Only match #hashtag format e.g. #news #cricket
+        const cat = ALL_CATEGORIES.find(
+          c => cats.includes(c.id) && lower.includes(`#${c.id}`)
+        );
+        if (!cat) return;
+
+        matched.push({
+          id:      tweet._id,
+          type:    "keyword",
+          keyword: cat.id,
+          author:  tweet.author?.displayName || "Someone",
+          content,
+          avatar:  tweet.author?.avatar || "",
+          time:    tweet.timestamp,
+        });
       });
 
-      // Sort newest first, keep last 50
       matched.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
       const trimmed = matched.slice(0, 50);
       setNotifications(trimmed);
-      localStorage.setItem("twiller-notification-history", JSON.stringify(trimmed));
-    }).catch(console.error)
-      .finally(() => setLoading(false));
+
+      // Sync badge count to sidebar
+      setNotificationCount(0);
+
+    }).catch(console.error).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+  setNotificationCount(0); // ← clear badge immediately when page opens
+  fetchNotifications();
+}, []);
+
+  useEffect(() => {
+    const handler = () => fetchNotifications();
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
   }, []);
+
+  const handleClearAll = () => {
+    saveClearedAt();          // persist — survives page re-visit
+    setNotifications([]);     // clear UI
+    setNotificationCount(0);  // clear sidebar badge
+  };
 
   const timeAgo = (date: string) => {
     const s = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
@@ -64,6 +105,9 @@ export default function NotificationsPage() {
     if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
     return `${Math.floor(s / 86400)}d ago`;
   };
+
+  const getCatMeta = (id: string) =>
+    ALL_CATEGORIES.find(c => c.id === id) || { emoji: "🔔", label: id };
 
   return (
     <div style={{ minHeight: "100vh", background: "#000", fontFamily: "'DM Sans', sans-serif" }}>
@@ -78,40 +122,53 @@ export default function NotificationsPage() {
         <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>Notifications</h1>
       </div>
 
-      {/* Notification settings toggle */}
+      {/* Compact notification settings dropdown */}
       <NotificationToggle />
 
       {/* Section header */}
       <div style={{
-        padding: "14px 16px 10px",
+        padding: "12px 16px 10px",
         borderBottom: "1px solid rgba(255,255,255,0.07)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>
-          Keyword alerts
+        <p style={{
+          color: "rgba(255,255,255,0.5)", fontSize: 13, margin: 0,
+          fontWeight: 600, textTransform: "uppercase", letterSpacing: 1,
+        }}>
+          Keyword alerts {notifications.length > 0 && `(${notifications.length})`}
         </p>
-        {notifications.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button
-            onClick={() => {
-              setNotifications([]);
-              localStorage.removeItem("twiller-notification-history");
-            }}
+            onClick={fetchNotifications}
             style={{
-              background: "none", border: "none", color: "rgba(255,255,255,0.3)",
-              fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
-              transition: "color 0.15s",
+              background: "none", border: "none",
+              color: "rgba(255,255,255,0.3)", fontSize: 12, cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif", transition: "color 0.15s",
             }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
+            onMouseEnter={e => (e.currentTarget.style.color = "#1d9bf0")}
             onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
           >
-            Clear all
+            ↻ Refresh
           </button>
-        )}
+          {notifications.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              style={{
+                background: "none", border: "none",
+                color: "rgba(255,255,255,0.3)", fontSize: 12, cursor: "pointer",
+                fontFamily: "'DM Sans',sans-serif", transition: "color 0.15s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
+              onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.3)")}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Notification list */}
+      {/* List */}
       {loading ? (
-        // Skeleton
         Array.from({ length: 3 }).map((_, i) => (
           <div key={i} style={{
             display: "flex", gap: 12, padding: "14px 16px",
@@ -125,85 +182,80 @@ export default function NotificationsPage() {
           </div>
         ))
       ) : notifications.length === 0 ? (
-        // Empty state
         <div style={{ padding: "64px 24px", textAlign: "center" }}>
           <div style={{
             width: 56, height: 56, borderRadius: "50%",
-            background: "rgba(29,155,240,0.1)",
-            border: "1px solid rgba(29,155,240,0.2)",
+            background: "rgba(29,155,240,0.1)", border: "1px solid rgba(29,155,240,0.2)",
             display: "flex", alignItems: "center", justifyContent: "center",
             margin: "0 auto 16px",
           }}>
             <Bell size={24} color="#1d9bf0" />
           </div>
           <h2 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: "0 0 8px" }}>
-            Nothing to see here — yet
+            Nothing here yet
           </h2>
-          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, margin: "0 0 16px" }}>
-            Tweets mentioning <strong style={{ color: "#1d9bf0" }}>cricket</strong> or <strong style={{ color: "#1d9bf0" }}>science</strong> will appear here.
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, margin: "0 0 8px" }}>
+            Tweets with <strong style={{ color: "#1d9bf0" }}>#hashtags</strong> from your selected categories will appear here.
           </p>
           <p style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, margin: 0 }}>
-            Enable the toggle above to also get browser popup notifications.
+            Watching: {selected.map(id => `#${id}`).join(", ")}
           </p>
         </div>
       ) : (
-        // Notification rows
-        notifications.map((notif, i) => (
-          <div
-            key={notif.id}
-            style={{
-              display: "flex", gap: 12, padding: "14px 16px",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-              transition: "background 0.15s",
-              animation: `fadeIn 0.3s ${i * 0.04}s ease both`,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-          >
-            {/* Avatar */}
-            <div style={{ flexShrink: 0 }}>
-              {notif.avatar ? (
-                <img src={notif.avatar} alt={notif.author}
-                  style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover" }} />
-              ) : (
-                <div style={{
-                  width: 42, height: 42, borderRadius: "50%",
-                  background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "#fff", fontWeight: 700, fontSize: 16,
-                }}>
-                  {notif.author[0]}
-                </div>
-              )}
-            </div>
-
-            {/* Content */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                {/* Keyword badge */}
-                <span style={{
-                  background: "rgba(29,155,240,0.12)", border: "1px solid rgba(29,155,240,0.25)",
-                  color: "#1d9bf0", fontSize: 11, fontWeight: 700,
-                  padding: "2px 8px", borderRadius: 9999,
-                }}>
-                  #{notif.keyword}
-                </span>
-                <span style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>{notif.author}</span>
-                <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
-                  {timeAgo(notif.time)}
-                </span>
-              </div>
-              {/* Highlight keyword in content */}
-              <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>
-                {notif.content.split(new RegExp(`(${notif.keyword})`, "gi")).map((part, j) =>
-                  part.toLowerCase() === notif.keyword.toLowerCase()
-                    ? <mark key={j} style={{ background: "rgba(29,155,240,0.25)", color: "#1d9bf0", borderRadius: 3, padding: "0 2px" }}>{part}</mark>
-                    : part
+        notifications.map((notif) => {
+          const cat = getCatMeta(notif.keyword);
+          return (
+            <div
+              key={notif.id}
+              style={{
+                display: "flex", gap: 12, padding: "14px 16px",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+            >
+              <div style={{ flexShrink: 0 }}>
+                {notif.avatar ? (
+                  <img src={notif.avatar} alt={notif.author}
+                    style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover" }} />
+                ) : (
+                  <div style={{
+                    width: 42, height: 42, borderRadius: "50%",
+                    background: "linear-gradient(135deg,#1d9bf0,#7950ff)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#fff", fontWeight: 700, fontSize: 16,
+                  }}>
+                    {notif.author[0]}
+                  </div>
                 )}
-              </p>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                  <span style={{
+                    background: "rgba(29,155,240,0.12)", border: "1px solid rgba(29,155,240,0.25)",
+                    color: "#1d9bf0", fontSize: 11, fontWeight: 700,
+                    padding: "2px 8px", borderRadius: 9999,
+                  }}>
+                    {cat.emoji} #{notif.keyword}
+                  </span>
+                  <span style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>{notif.author}</span>
+                  <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
+                    {timeAgo(notif.time)}
+                  </span>
+                </div>
+                <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, margin: 0, lineHeight: 1.5, wordBreak: "break-word" }}>
+                  {notif.content.split(new RegExp(`(#${notif.keyword})`, "gi")).map((part, j) =>
+                    part.toLowerCase() === `#${notif.keyword}`.toLowerCase()
+                      ? <mark key={j} style={{ background: "rgba(29,155,240,0.25)", color: "#1d9bf0", borderRadius: 3, padding: "0 2px" }}>{part}</mark>
+                      : part
+                  )}
+                </p>
+              </div>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );

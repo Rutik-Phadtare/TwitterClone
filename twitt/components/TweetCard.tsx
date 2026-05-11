@@ -489,10 +489,10 @@ export default function TweetCard({ tweet, onDelete, onEdit }: TweetCardProps) {
   }, [tweetstate.audio]);
 
   useEffect(() => {
-  if (tweetstate?.content && tweetstate?.author?.displayName) {
-    sendTweetNotification(tweetstate.content, tweetstate.author.displayName);
+  if (tweetstate?._id && tweetstate?.content && tweetstate?.author?.displayName) {
+    sendTweetNotification(tweetstate._id, tweetstate.content, tweetstate.author.displayName);
   }
-}, []);
+  }, []);
 
   // ── API helpers ────────────────────────────────────────────────────────────
   const likeTweet = async (tweetId: string) => {
