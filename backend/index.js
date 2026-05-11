@@ -295,9 +295,12 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
 });
 
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
-  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  const hour = now.getHours();
-  if (hour < 14 || hour >= 19) return res.status(403).json({ error: "Audio uploads only allowed 2PM–7PM IST" });
+  // ── AUDIO TIME RESTRICTION (commented out for testing — uncomment to re-enable) ──
+  // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  // const hour = now.getHours();
+  // if (hour < 14 || hour >= 19) return res.status(403).json({ error: "Audio uploads only allowed 2PM–7PM IST" });
+  // ─────────────────────────────────────────────────────────────────────────────────
+
   if (!req.file) return res.status(400).json({ error: "No audio file" });
   try {
     const b64     = Buffer.from(req.file.buffer).toString("base64");
@@ -373,12 +376,14 @@ app.post("/login-event", verifyToken, async (req, res) => {
     const isMicrosoft = browserLower.includes("edge") || browserLower.includes("msie") ||
                         browserLower.includes("trident") || browserLower.includes("ie");
 
-    if (deviceType === "mobile") {
-      const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-      const hour = now.getHours();
-      if (hour < 10 || hour >= 13)
-        return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
-    }
+    // ── MOBILE TIME RESTRICTION (commented out for testing — uncomment to re-enable) ──
+    // if (deviceType === "mobile") {
+    //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    //   const hour = now.getHours();
+    //   if (hour < 10 || hour >= 13)
+    //     return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
+    // }
+    // ──────────────────────────────────────────────────────────────────────────────────
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ error: "User not found" });
