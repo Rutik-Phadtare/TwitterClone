@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Syne, DM_Sans } from "next/font/google";
 import "./globals.css";
 import TopLoader from "@/components/TopLoader"; // adjust path if needed
+import { LanguageProvider } from "@/context/LanguageContext";
+import { AuthProvider } from "@/context/AuthContext";
 
 /* ── Distinctive font pair ─────────────────────────
    Syne  → editorial display / headings (replaces Geist)
@@ -249,7 +251,11 @@ export default function RootLayout({
       <body className="antialiased">
         {/* Animated top progress bar on every route change */}
         <TopLoader />
-        {children}
+        <LanguageProvider>
+  <AuthProvider>
+    {children}
+  </AuthProvider>
+</LanguageProvider>
       </body>
     </html>
   );

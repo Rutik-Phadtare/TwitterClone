@@ -10,6 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import axios from "axios";
 import axiosInstance from "@/lib/axiosInstance";
 import AudioRecorder from "./AudioRecorder"; // ← NEW
+import { t } from "i18next";
+
 
 const COMPOSER_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -315,7 +317,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
               <textarea
                 ref={textareaRef}
                 className="tc-textarea"
-                placeholder="What's happening?"
+                placeholder={t("whatsHappening")}
                 value={content}
                 onChange={(e) => { setContent(e.target.value); setPostError(""); }}
                 rows={3}

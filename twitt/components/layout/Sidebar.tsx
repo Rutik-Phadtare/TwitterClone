@@ -14,7 +14,7 @@ import TwitterLogo from '../Twitterlogo';
 import { useAuth } from '@/context/AuthContext';
 import { ALL_CATEGORIES, getSelectedCategories } from '@/lib/notificationUtils';
 import axiosInstance from '@/lib/axiosInstance';
-
+import LanguageSwitcher from "../LanguageSwitcher";
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LAST_READ_KEY  = "twiller-notif-last-read";   // when user last opened notifications
 const COUNT_KEY      = "twiller-notification-count"; // badge count
@@ -227,6 +227,10 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
             </li>
           ))}
         </ul>
+
+        <div style={{ marginTop: 8, paddingRight: 12 }}>
+          <LanguageSwitcher />
+        </div>
 
         {/* Post button */}
         <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>

@@ -352,6 +352,65 @@ app.post("/send-otp", verifyToken, async (req, res) => {
   }
 });
 
+// ── SMS OTP store (separate from email OTP store) ─────────────────────────────
+const smsOtpStore = new Map();
+
+// Send OTP via SMS (Fast2SMS — Indian numbers, free credits)
+app.post("/send-sms-otp", verifyToken, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: "Phone number required" });
+
+    // Rate limit: 1 SMS per number per 60 seconds
+    const existing = smsOtpStore.get(phone);
+    if (existing && (Date.now() - existing.createdAt) < 60_000) {
+      return res.json({ message: "OTP already sent — check your SMS" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    smsOtpStore.set(phone, {
+      otp,
+      expires:   Date.now() + 10 * 60 * 1000,
+      createdAt: Date.now(),
+    });
+
+    console.log(`📱 Sending SMS OTP to: ${phone}`);
+
+    // Fast2SMS HTTP API
+    // Fast2SMS HTTP API — Quick SMS route (no DLT registration needed)
+const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&message=Your+Twiller+verification+OTP+is+${otp}.+Valid+for+5+minutes.&language=english&route=q&numbers=${cleanPhone}`;
+
+const response = await fetch(url, {
+  method: "GET",
+  headers: { "cache-control": "no-cache" },
+});
+
+    const data = await response.json();
+    console.log("Fast2SMS response:", data);
+
+    if (!data.return) {
+      throw new Error(data.message || "SMS send failed");
+    }
+
+    console.log(`✅ SMS OTP sent to ${phone}`);
+    return res.json({ message: "OTP sent to your phone" });
+  } catch (error) {
+    console.error("❌ SMS OTP error:", error.message);
+    return res.status(500).json({ error: "Failed to send SMS OTP", detail: error.message });
+  }
+});
+
+// Verify SMS OTP
+app.post("/verify-sms-otp", verifyToken, async (req, res) => {
+  const { phone, otp } = req.body;
+  const record = smsOtpStore.get(phone);
+  if (!record || record.otp !== otp || Date.now() > record.expires)
+    return res.status(400).json({ error: "Invalid or expired OTP" });
+  smsOtpStore.delete(phone);
+  return res.json({ message: "OTP verified" });
+});
+
 app.post("/verify-otp", verifyToken, async (req, res) => {
   const record = otpStore.get(req.user.email);
   if (!record || record.otp !== req.body.otp || Date.now() > record.expires)

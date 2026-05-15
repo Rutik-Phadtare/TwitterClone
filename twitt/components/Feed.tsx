@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import TweetCard from "./TweetCard";
 import TweetComposer from "./TweetComposer";
 import axiosInstance from "@/lib/axiosInstance";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const STYLE_ID = "feed-animations-v2";
@@ -148,6 +150,7 @@ const Feed = () => {
   const [loading,   setloading]   = useState(false);
   const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
   const tweetsRef = useRef<HTMLDivElement>(null);
+  const { lang } = useLanguage();
 
   // ── unchanged logic ────────────────────────────────────────────────────────
   const fetchTweets = async () => {
@@ -199,7 +202,7 @@ const Feed = () => {
               onClick={() => setActiveTab(val)}
             >
               <span className="x-tab-label">
-                {val === "foryou" ? "For you" : "Following"}
+                {val === "foryou" ? t(lang, "forYou") : t(lang, "following")}
               </span>
               <span className="x-tab-indicator" />
             </button>
