@@ -4,6 +4,9 @@ import { Search, Star, ChevronRight, Sparkles } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import axiosInstance from '@/lib/axiosInstance';
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
+import UserProfileModal from "../UserProfileModal";
 
 // ─── Inject styles once ───────────────────────────────────────────────────────
 const STYLE_ID = 'right-sidebar-styles';
@@ -222,30 +225,54 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
   const [followed,    setFollowed]    = useState<Set<string>>(new Set());
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading,     setLoading]     = useState(true);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
 
   // ── Fetch real users ──────────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      try {
-        setLoading(true);
-        const res = await axiosInstance.get('/suggested-users');
-        setSuggestions(res.data);
-      } catch (err) {
-        console.error('Failed to fetch suggested users:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSuggestions();
-  }, []);
+useEffect(() => {
+  const fetchSuggestions = async () => {
+    try {
+      setLoading(true);
+      const res = await axiosInstance.get('/suggested-users');
+      setSuggestions(res.data);
+      // Pre-populate followed state from API data
+      const alreadyFollowing = new Set<string>(
+        res.data.filter((u: any) => u.isFollowing).map((u: any) => u._id)
+      );
+      setFollowed(alreadyFollowing);
+    } catch (err) {
+      console.error('Failed to fetch suggested users:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchSuggestions();
+}, []);
 
-  const toggleFollow = (id: string) => {
-    setFollowed((prev) => {
+    const toggleFollow = async (userId: string) => {
+    const isFollowing = followed.has(userId);
+    // Optimistic update
+    setFollowed(prev => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      isFollowing ? next.delete(userId) : next.add(userId);
       return next;
     });
+    try {
+      if (isFollowing) {
+        await axiosInstance.delete(`/follow/${userId}`);
+      } else {
+        await axiosInstance.post(`/follow/${userId}`);
+      }
+    } catch (err) {
+      // Revert on error
+      setFollowed(prev => {
+        const next = new Set(prev);
+        isFollowing ? next.add(userId) : next.delete(userId);
+        return next;
+      });
+    }
   };
+
+  const { lang } = useLanguage();
 
   // ── Helper: get initials from name ────────────────────────────────────────
   const getInitials = (user: any) => {
@@ -289,7 +316,7 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Sparkles size={18} className="rs-sparkle-icon" />
             <h3 style={{ margin: 0, color: '#fff', fontSize: 17, fontWeight: 800, letterSpacing: '-0.2px' }}>
-              Subscribe to Premium
+              {t(lang, "subscribeToPermium")}
             </h3>
           </div>
           <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, lineHeight: 1.55, margin: '0 0 14px' }}>
@@ -304,7 +331,7 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
 
       {/* ── Who to Follow ── */}
       <div className="rs-card rs-follow-card">
-        <p className="rs-section-title">You might like</p>
+        <p className="rs-section-title">{t(lang, "youMightLike")}</p>
         <div className="rs-divider" />
 
         <div style={{ padding: '6px 0 4px' }}>
@@ -323,6 +350,7 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
               <div
                 key={user._id}
                 className="rs-follow-row"
+                onClick={() => setViewingUserId(user._id)}
                 style={{ animation: `rs-fadeUp 0.38s ${0.2 + idx * 0.07}s cubic-bezier(0.22,1,0.36,1) both` }}
               >
                 {/* Avatar */}
@@ -375,7 +403,7 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
                   className={`rs-follow-btn${followed.has(user._id) ? ' following' : ''}`}
                   onClick={() => toggleFollow(user._id)}
                 >
-                  {followed.has(user._id) ? 'Following' : 'Follow'}
+                  {followed.has(user._id) ? t(lang, "following_btn") : t(lang, "follow")}
                 </button>
               </div>
             ))
@@ -384,7 +412,7 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
 
         <div className="rs-divider" />
         <button className="rs-show-more">
-          Show more
+          {t(lang, "showMore")}
           <ChevronRight size={14} style={{ marginTop: 1 }} />
         </button>
       </div>
@@ -398,6 +426,10 @@ export default function RightSidebar({ onNavigate }: { onNavigate?: (page: strin
         </div>
         <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>© 2026 X Corp. Made by Rutik....</div>
       </div>
+      <UserProfileModal
+        userId={viewingUserId}
+        onClose={() => setViewingUserId(null)}
+      />
     </div>
   );
 }

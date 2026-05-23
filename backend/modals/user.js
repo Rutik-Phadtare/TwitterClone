@@ -8,7 +8,10 @@ const UserSchema = mongoose.Schema({
   bio: { type: String, default: "" },
   location: { type: String, default: "" },
   website: { type: String, default: "" },
-  joinedDate: { type: Date, default: Date.now() },
+  joinedDate: { type: Date, default: Date.now },
+  // ADD to your User schema:
+followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] }],
+following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] }],
 });
 
 export default mongoose.model("User", UserSchema);

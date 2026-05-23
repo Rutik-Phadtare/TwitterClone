@@ -20,7 +20,7 @@ import { verifyToken } from "./middleware/auth.js";
 
 console.log("📧 BREVO_API_KEY configured:", !!process.env.BREVO_API_KEY);
 
-// ── Brevo HTTP email sender (no SMTP — uses API, works on Render free tier) ───
+// ── Brevo HTTP email sender ───────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, html }) => {
   const res = await fetch("https://api.brevo.com/v3/smtp/email", {
     method:  "POST",
@@ -29,8 +29,8 @@ const sendEmail = async ({ to, subject, html }) => {
       "api-key":      process.env.BREVO_API_KEY,
     },
     body: JSON.stringify({
-      sender:   { name: "Twiller", email: process.env.BREVO_SENDER_EMAIL },
-      to:       [{ email: to }],
+      sender:      { name: "Twiller", email: process.env.BREVO_SENDER_EMAIL },
+      to:          [{ email: to }],
       subject,
       htmlContent: html,
     }),
@@ -62,14 +62,15 @@ const razorpay = new Razorpay({
 const upload      = multer();
 const audioUpload = multer({ limits: { fileSize: 100 * 1024 * 1024 } });
 
-// ── Plans & OTP store ─────────────────────────────────────────────────────────
+// ── Plans & OTP stores ────────────────────────────────────────────────────────
 const PLANS = {
   bronze: { price: 10000,  limit: 3  },
   silver: { price: 30000,  limit: 5  },
   gold:   { price: 100000, limit: -1 },
 };
 
-const otpStore = new Map();
+const otpStore    = new Map();
+const smsOtpStore = new Map();
 
 // ── Express app ───────────────────────────────────────────────────────────────
 const app = express();
@@ -115,7 +116,14 @@ app.post("/register", verifyToken, async (req, res) => {
   try {
     const user = await User.findOneAndUpdate(
       { email: req.user.email },
-      { $setOnInsert: { email: req.user.email, name: req.body.name || req.user.name || "", profilePic: req.body.profilePic || req.user.picture || "", ...req.body } },
+      {
+        $setOnInsert: {
+          email:      req.user.email,
+          name:       req.body.name       || req.user.name    || "",
+          profilePic: req.body.profilePic || req.user.picture || "",
+          ...req.body,
+        },
+      },
       { upsert: true, new: true }
     );
     return res.status(200).send(user);
@@ -157,7 +165,7 @@ app.patch("/userupdate/:email", verifyToken, async (req, res) => {
 app.post("/post", verifyToken, async (req, res) => {
   try {
     const content = (req.body.content || "").trim();
-    if (!content) return res.status(400).send({ error: "Tweet content cannot be empty" });
+    if (!content)             return res.status(400).send({ error: "Tweet content cannot be empty" });
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
 
     const dbUser = await User.findOne({ email: req.user.email });
@@ -168,10 +176,18 @@ app.post("/post", verifyToken, async (req, res) => {
     const tweetsUsed = sub?.tweetsUsed ?? 0;
 
     if (tweetLimit !== -1 && tweetsUsed >= tweetLimit) {
-      return res.status(403).send({ error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.` });
+      return res.status(403).send({
+        error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.`,
+      });
     }
 
-    const tweet = new Tweet({ content, image: req.body.image || null, audio: req.body.audio || null, author: dbUser._id });
+    const tweet = new Tweet({
+      content,
+      image:         req.body.image         || null,
+      audio:         req.body.audio         || null,
+      audioDuration: req.body.audioDuration || null,
+      author:        dbUser._id,
+    });
     await tweet.save();
 
     if (sub) { sub.tweetsUsed += 1; await sub.save(); }
@@ -188,8 +204,11 @@ app.post("/post", verifyToken, async (req, res) => {
 app.get("/post", async (req, res) => {
   try {
     const { cursor, limit = 20 } = req.query;
-    const query = cursor ? { _id: { $lt: cursor } } : {};
-    const tweets = await Tweet.find(query).sort({ _id: -1 }).limit(Number(limit)).populate("author");
+    const query  = cursor ? { _id: { $lt: cursor } } : {};
+    const tweets = await Tweet.find(query)
+      .sort({ _id: -1 })
+      .limit(Number(limit))
+      .populate("author");
     return res.status(200).send({
       tweets,
       nextCursor: tweets.length === Number(limit) ? tweets[tweets.length - 1]._id : null,
@@ -204,15 +223,20 @@ app.patch("/post/:id", verifyToken, async (req, res) => {
     const content = (req.body.content || "").trim();
     if (!content)             return res.status(400).send({ error: "Content cannot be empty" });
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
+
     const dbUser = await User.findOne({ email: req.user.email });
     if (!dbUser) return res.status(404).send({ error: "User not found" });
+
     const tweet = await Tweet.findById(req.params.id);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+
     if (tweet.author.toString() !== dbUser._id.toString())
       return res.status(403).send({ error: "Forbidden — you can only edit your own tweets" });
+
     tweet.content = content;
     tweet.edited  = true;
     await tweet.save();
+
     const populated = await tweet.populate("author");
     return res.status(200).send(populated);
   } catch (error) {
@@ -234,14 +258,19 @@ app.delete("/post/:id", verifyToken, async (req, res) => {
   }
 });
 
+// ── Like ──────────────────────────────────────────────────────────────────────
+// FIX: populate("author") so frontend keeps displayName + avatar after toggle
 app.post("/like/:tweetid", verifyToken, async (req, res) => {
   try {
     const dbUser = await User.findOne({ email: req.user.email });
     if (!dbUser) return res.status(404).send({ error: "User not found" });
+
     const tweet = await Tweet.findById(req.params.tweetid);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+
     const userId       = dbUser._id.toString();
     const alreadyLiked = tweet.likedBy.some((id) => id.toString() === userId);
+
     if (alreadyLiked) {
       tweet.likes   = Math.max(0, tweet.likes - 1);
       tweet.likedBy = tweet.likedBy.filter((id) => id.toString() !== userId);
@@ -249,21 +278,30 @@ app.post("/like/:tweetid", verifyToken, async (req, res) => {
       tweet.likes += 1;
       tweet.likedBy.push(dbUser._id);
     }
+
     await tweet.save();
-    return res.send(tweet);
+
+    // ✅ FIX — populate so displayName/avatar survive the response
+    const populated = await tweet.populate("author");
+    return res.send(populated);
   } catch (error) {
     return res.status(400).send({ error: error.message });
   }
 });
 
+// ── Retweet ───────────────────────────────────────────────────────────────────
+// FIX: populate("author") so frontend keeps displayName + avatar after toggle
 app.post("/retweet/:tweetid", verifyToken, async (req, res) => {
   try {
     const dbUser = await User.findOne({ email: req.user.email });
     if (!dbUser) return res.status(404).send({ error: "User not found" });
+
     const tweet = await Tweet.findById(req.params.tweetid);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+
     const userId           = dbUser._id.toString();
     const alreadyRetweeted = tweet.retweetedBy.some((id) => id.toString() === userId);
+
     if (alreadyRetweeted) {
       tweet.retweets    = Math.max(0, tweet.retweets - 1);
       tweet.retweetedBy = tweet.retweetedBy.filter((id) => id.toString() !== userId);
@@ -271,8 +309,12 @@ app.post("/retweet/:tweetid", verifyToken, async (req, res) => {
       tweet.retweets += 1;
       tweet.retweetedBy.push(dbUser._id);
     }
+
     await tweet.save();
-    return res.send(tweet);
+
+    // ✅ FIX — populate so displayName/avatar survive the response
+    const populated = await tweet.populate("author");
+    return res.send(populated);
   } catch (error) {
     return res.status(400).send({ error: error.message });
   }
@@ -295,17 +337,20 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
 });
 
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
-  // ── AUDIO TIME RESTRICTION (commented out for testing — uncomment to re-enable) ──
+  // ── AUDIO TIME RESTRICTION (commented for testing — uncomment to enable) ──
   // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   // const hour = now.getHours();
   // if (hour < 14 || hour >= 19) return res.status(403).json({ error: "Audio uploads only allowed 2PM–7PM IST" });
-  // ─────────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (!req.file) return res.status(400).json({ error: "No audio file" });
   try {
     const b64     = Buffer.from(req.file.buffer).toString("base64");
     const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-    const result  = await cloudinary.uploader.upload(dataURI, { resource_type: "video", folder: "twiller-audio" });
+    const result  = await cloudinary.uploader.upload(dataURI, {
+      resource_type: "video",
+      folder:        "twiller-audio",
+    });
     if (result.duration > 300) {
       await cloudinary.uploader.destroy(result.public_id, { resource_type: "video" });
       return res.status(400).json({ error: "Audio must be under 5 minutes" });
@@ -317,7 +362,7 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OTP ROUTES — using Brevo HTTP API (no SMTP needed)
+// OTP ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post("/send-otp", verifyToken, async (req, res) => {
@@ -326,12 +371,15 @@ app.post("/send-otp", verifyToken, async (req, res) => {
 
     const existing = otpStore.get(req.user.email);
     if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 60_000) {
-      console.log("⏳ OTP rate limited — already sent within 60s");
       return res.json({ message: "OTP already sent — check your email" });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(req.user.email, { otp, expires: Date.now() + 10 * 60 * 1000, createdAt: Date.now() });
+    otpStore.set(req.user.email, {
+      otp,
+      expires:   Date.now() + 10 * 60 * 1000,
+      createdAt: Date.now(),
+    });
 
     await sendEmail({
       to:      req.user.email,
@@ -352,16 +400,21 @@ app.post("/send-otp", verifyToken, async (req, res) => {
   }
 });
 
-// ── SMS OTP store (separate from email OTP store) ─────────────────────────────
-const smsOtpStore = new Map();
+app.post("/verify-otp", verifyToken, async (req, res) => {
+  const record = otpStore.get(req.user.email);
+  if (!record || record.otp !== req.body.otp || Date.now() > record.expires)
+    return res.status(400).json({ error: "Invalid or expired OTP" });
+  otpStore.delete(req.user.email);
+  return res.json({ message: "OTP verified" });
+});
 
-// Send OTP via SMS (Fast2SMS — Indian numbers, free credits)
+// ── SMS OTP (Fast2SMS) ────────────────────────────────────────────────────────
+
 app.post("/send-sms-otp", verifyToken, async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: "Phone number required" });
 
-    // Rate limit: 1 SMS per number per 60 seconds
     const existing = smsOtpStore.get(phone);
     if (existing && (Date.now() - existing.createdAt) < 60_000) {
       return res.json({ message: "OTP already sent — check your SMS" });
@@ -376,22 +429,18 @@ app.post("/send-sms-otp", verifyToken, async (req, res) => {
 
     console.log(`📱 Sending SMS OTP to: ${phone}`);
 
-    // Fast2SMS HTTP API
-    // Fast2SMS HTTP API — Quick SMS route (no DLT registration needed)
-const cleanPhone = phone.replace(/\D/g, "").slice(-10);
-const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&message=Your+Twiller+verification+OTP+is+${otp}.+Valid+for+5+minutes.&language=english&route=q&numbers=${cleanPhone}`;
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&message=Your+Twiller+verification+OTP+is+${otp}.+Valid+for+5+minutes.&language=english&route=q&numbers=${cleanPhone}`;
 
-const response = await fetch(url, {
-  method: "GET",
-  headers: { "cache-control": "no-cache" },
-});
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "cache-control": "no-cache" },
+    });
 
     const data = await response.json();
     console.log("Fast2SMS response:", data);
 
-    if (!data.return) {
-      throw new Error(data.message || "SMS send failed");
-    }
+    if (!data.return) throw new Error(data.message || "SMS send failed");
 
     console.log(`✅ SMS OTP sent to ${phone}`);
     return res.json({ message: "OTP sent to your phone" });
@@ -401,21 +450,12 @@ const response = await fetch(url, {
   }
 });
 
-// Verify SMS OTP
 app.post("/verify-sms-otp", verifyToken, async (req, res) => {
   const { phone, otp } = req.body;
   const record = smsOtpStore.get(phone);
   if (!record || record.otp !== otp || Date.now() > record.expires)
     return res.status(400).json({ error: "Invalid or expired OTP" });
   smsOtpStore.delete(phone);
-  return res.json({ message: "OTP verified" });
-});
-
-app.post("/verify-otp", verifyToken, async (req, res) => {
-  const record = otpStore.get(req.user.email);
-  if (!record || record.otp !== req.body.otp || Date.now() > record.expires)
-    return res.status(400).json({ error: "Invalid or expired OTP" });
-  otpStore.delete(req.user.email);
   return res.json({ message: "OTP verified" });
 });
 
@@ -430,19 +470,21 @@ app.post("/login-event", verifyToken, async (req, res) => {
     const os         = ua.getOS().name       || "Unknown";
     const deviceType = ua.getDevice().type   || "desktop";
     const ip         = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
+
     const browserLower = (browser || "").toLowerCase();
+    const isMicrosoft  = browserLower.includes("edge")    ||
+                         browserLower.includes("msie")    ||
+                         browserLower.includes("trident") ||
+                         browserLower.includes("ie");
 
-    const isMicrosoft = browserLower.includes("edge") || browserLower.includes("msie") ||
-                        browserLower.includes("trident") || browserLower.includes("ie");
-
-    // ── MOBILE TIME RESTRICTION (commented out for testing — uncomment to re-enable) ──
+    // ── MOBILE TIME RESTRICTION (commented for testing — uncomment to enable) ──
     // if (deviceType === "mobile") {
     //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     //   const hour = now.getHours();
     //   if (hour < 10 || hour >= 13)
     //     return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
     // }
-    // ──────────────────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -452,7 +494,7 @@ app.post("/login-event", verifyToken, async (req, res) => {
     const isChromium  = (browserLower.includes("chrome") || browserLower.includes("chromium")) && !isMicrosoft;
     const requiresOtp = isChromium;
 
-    console.log(`🔐 login-event: browser=${browser} device=${deviceType} requiresOtp=${requiresOtp} isMicrosoft=${isMicrosoft}`);
+    console.log(`🔐 login-event: browser=${browser} device=${deviceType} requiresOtp=${requiresOtp}`);
     return res.json({ requiresOtp, browser, os, device: deviceType, isMicrosoft });
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -464,6 +506,71 @@ app.get("/login-history", verifyToken, async (req, res) => {
     const user = await User.findOne({ email: req.user.email });
     const logs = await LoginLog.find({ userId: user._id }).sort({ timestamp: -1 }).limit(20);
     return res.json(logs);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FOLLOW / UNFOLLOW ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post("/follow/:userId", verifyToken, async (req, res) => {
+  try {
+    const me     = await User.findOne({ email: req.user.email });
+    const target = await User.findById(req.params.userId);
+    if (!me || !target) return res.status(404).json({ error: "User not found" });
+    if (me._id.toString() === target._id.toString())
+      return res.status(400).json({ error: "Cannot follow yourself" });
+
+    const alreadyFollowing = me.following?.some(id => id.toString() === target._id.toString());
+    if (alreadyFollowing) return res.status(400).json({ error: "Already following" });
+
+    await User.findByIdAndUpdate(me._id,     { $addToSet: { following: target._id } });
+    await User.findByIdAndUpdate(target._id, { $addToSet: { followers: me._id     } });
+
+    return res.json({ message: "Followed", following: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete("/follow/:userId", verifyToken, async (req, res) => {
+  try {
+    const me     = await User.findOne({ email: req.user.email });
+    const target = await User.findById(req.params.userId);
+    if (!me || !target) return res.status(404).json({ error: "User not found" });
+
+    await User.findByIdAndUpdate(me._id,     { $pull: { following: target._id } });
+    await User.findByIdAndUpdate(target._id, { $pull: { followers: me._id     } });
+
+    return res.json({ message: "Unfollowed", following: false });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/user/:userId", verifyToken, async (req, res) => {
+  try {
+    const me   = await User.findOne({ email: req.user.email });
+    const user = await User.findById(req.params.userId)
+      .select("displayName username avatar banner bio location website joinedDate followers following");
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const isFollowing = me.following?.some(id => id.toString() === user._id.toString());
+    return res.json({ ...user.toObject(), isFollowing });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.get("/user/:userId/tweets", verifyToken, async (req, res) => {
+  try {
+    const tweets = await Tweet.find({ author: req.params.userId })
+      .sort({ _id: -1 })
+      .limit(20)
+      .populate("author");
+    return res.json(tweets);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -484,10 +591,20 @@ app.get("/subscription", verifyToken, async (req, res) => {
 });
 
 app.post("/create-order", verifyToken, async (req, res) => {
+  // ── PAYMENT TIME RESTRICTION (commented for testing — uncomment to enable) ──
+  // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  // const hour = now.getHours();
+  // if (hour < 10 || hour >= 11) return res.status(403).json({ error: "Payments only accepted 10AM–11AM IST" });
+  // ────────────────────────────────────────────────────────────────────────────
+
   try {
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
-    const order = await razorpay.orders.create({ amount: plan.price, currency: "INR", receipt: `receipt_${Date.now()}` });
+    const order = await razorpay.orders.create({
+      amount:   plan.price,
+      currency: "INR",
+      receipt:  `receipt_${Date.now()}`,
+    });
     return res.json({ orderId: order.id, amount: plan.price });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -501,19 +618,34 @@ app.post("/demo-payment", verifyToken, async (req, res) => {
     const { plan } = req.body;
     const planData = PLANS[plan];
     if (!planData) return res.status(400).json({ error: "Invalid plan" });
+
     const user      = await User.findOne({ email: req.user.email });
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     const fakePid   = `demo_pay_${Date.now()}`;
+
     await Subscription.findOneAndUpdate(
       { userId: user._id },
       { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
       { upsert: true, new: true }
     );
+
     await sendEmail({
       to:      user.email,
       subject: "Twiller — Subscription Invoice (Demo)",
-      html: `<div style="font-family:sans-serif;max-width:500px;padding:24px"><h1 style="color:#1d9bf0">Twiller</h1><h2>Thank you for subscribing! 🎉</h2><p style="color:#888">(Demo mode — no real money charged)</p><table style="border-collapse:collapse;width:100%"><tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr><tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr><tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${fakePid}</td></tr><tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr></table></div>`,
+      html: `
+        <div style="font-family:sans-serif;max-width:500px;padding:24px">
+          <h1 style="color:#1d9bf0">Twiller</h1>
+          <h2>Thank you for subscribing! 🎉</h2>
+          <p style="color:#888">(Demo mode — no real money charged)</p>
+          <table style="border-collapse:collapse;width:100%">
+            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${fakePid}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
+          </table>
+        </div>`,
     });
+
     return res.json({ message: "Demo payment successful", plan, paymentId: fakePid });
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -524,35 +656,66 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan } = req.body;
     const crypto   = await import("crypto");
-    const expected = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
+    const expected = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
     if (expected !== razorpay_signature)
       return res.status(400).json({ error: "Invalid payment signature" });
+
     const user     = await User.findOne({ email: req.user.email });
     const planData = PLANS[plan];
     if (!planData) return res.status(400).json({ error: "Invalid plan" });
+
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await Subscription.findOneAndUpdate(
       { userId: user._id },
       { plan, tweetLimit: planData.limit, tweetsUsed: 0, expiresAt },
       { upsert: true, new: true }
     );
+
     await sendEmail({
       to:      user.email,
       subject: "Twiller — Subscription Invoice",
-      html: `<div style="font-family:sans-serif;max-width:500px;padding:24px"><h1 style="color:#1d9bf0">Twiller</h1><h2>Thank you for subscribing! 🎉</h2><table style="border-collapse:collapse;width:100%"><tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr><tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr><tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr><tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr></table></div>`,
+      html: `
+        <div style="font-family:sans-serif;max-width:500px;padding:24px">
+          <h1 style="color:#1d9bf0">Twiller</h1>
+          <h2>Thank you for subscribing! 🎉</h2>
+          <table style="border-collapse:collapse;width:100%">
+            <tr><td style="padding:8px;border:1px solid #eee">Plan</td><td style="padding:8px;border:1px solid #eee"><strong>${plan.toUpperCase()}</strong></td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Tweet limit</td><td style="padding:8px;border:1px solid #eee">${planData.limit === -1 ? "Unlimited" : planData.limit} per month</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Payment ID</td><td style="padding:8px;border:1px solid #eee">${razorpay_payment_id}</td></tr>
+            <tr><td style="padding:8px;border:1px solid #eee">Expires</td><td style="padding:8px;border:1px solid #eee">${expiresAt.toDateString()}</td></tr>
+          </table>
+        </div>`,
     });
+
     return res.json({ message: "Payment verified and subscription activated", plan });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUGGESTED USERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 app.get("/suggested-users", verifyToken, async (req, res) => {
   try {
+    const me    = await User.findOne({ email: req.user.email });
     const users = await User.find({ email: { $ne: req.user.email } })
-      .select("displayName email avatar username").limit(5).lean();
-    return res.json(users);
+      .select("displayName email avatar username followers following")
+      .limit(5)
+      .lean();
+
+    const withStatus = users.map(u => ({
+      ...u,
+      isFollowing:    me.following?.some(id => id.toString() === u._id.toString()) || false,
+      followersCount: u.followers?.length || 0,
+    }));
+
+    return res.json(withStatus);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }

@@ -8,6 +8,8 @@ import {
   ALL_CATEGORIES,
   setNotificationCount,
 } from "@/lib/notificationUtils";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 interface NotificationItem {
   id:      string;
@@ -81,6 +83,8 @@ export default function NotificationsPage() {
     }).catch(console.error).finally(() => setLoading(false));
   };
 
+  const { lang } = useLanguage();
+
   useEffect(() => {
   setNotificationCount(0); // ← clear badge immediately when page opens
   fetchNotifications();
@@ -119,7 +123,7 @@ export default function NotificationsPage() {
         padding: "16px 20px",
         borderBottom: "1px solid rgba(255,255,255,0.07)",
       }}>
-        <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>Notifications</h1>
+        <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>{t(lang, "notificationsTitle")}</h1>
       </div>
 
       {/* Compact notification settings dropdown */}
@@ -135,7 +139,7 @@ export default function NotificationsPage() {
           color: "rgba(255,255,255,0.5)", fontSize: 13, margin: 0,
           fontWeight: 600, textTransform: "uppercase", letterSpacing: 1,
         }}>
-          Keyword alerts {notifications.length > 0 && `(${notifications.length})`}
+          {t(lang, "keywordAlerts")} {notifications.length > 0 && `(${notifications.length})`}
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button
@@ -192,7 +196,7 @@ export default function NotificationsPage() {
             <Bell size={24} color="#1d9bf0" />
           </div>
           <h2 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: "0 0 8px" }}>
-            Nothing here yet
+            {t(lang, "nothingToSee")}
           </h2>
           <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, margin: "0 0 8px" }}>
             Tweets with <strong style={{ color: "#1d9bf0" }}>#hashtags</strong> from your selected categories will appear here.

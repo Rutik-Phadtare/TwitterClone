@@ -1,8 +1,11 @@
 "use client";
 import React from "react";
 import { Mail, Lock } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 export default function MessagesPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{ minHeight: "100vh", background: "#000" }}>
       <div style={{
@@ -11,7 +14,9 @@ export default function MessagesPage() {
         padding: "16px 20px",
         borderBottom: "1px solid rgba(255,255,255,0.07)",
       }}>
-        <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>Messages</h1>
+        <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>
+          {t(lang, "messages")}
+        </h1>
       </div>
       <div style={{ padding: "64px 24px", textAlign: "center" }}>
         <div style={{
@@ -24,10 +29,10 @@ export default function MessagesPage() {
           <Mail size={24} color="#1d9bf0" />
         </div>
         <h2 style={{ color: "#fff", fontWeight: 800, fontSize: 24, margin: "0 0 8px" }}>
-          Welcome to your inbox
+          {t(lang, "welcomeInbox")}
         </h2>
         <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 15, margin: "0 0 24px" }}>
-          Direct messaging is coming soon.
+          {t(lang, "messagingComing")}
         </p>
         <div style={{
           display: "inline-flex", alignItems: "center", gap: 8,

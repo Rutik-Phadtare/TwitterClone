@@ -15,6 +15,10 @@ import { useAuth } from '@/context/AuthContext';
 import { ALL_CATEGORIES, getSelectedCategories } from '@/lib/notificationUtils';
 import axiosInstance from '@/lib/axiosInstance';
 import LanguageSwitcher from "../LanguageSwitcher";
+
+// ADD these imports at the top of Sidebar.tsx:
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 // ── localStorage keys ─────────────────────────────────────────────────────────
 const LAST_READ_KEY  = "twiller-notif-last-read";   // when user last opened notifications
 const COUNT_KEY      = "twiller-notification-count"; // badge count
@@ -136,6 +140,7 @@ interface SidebarProps {
 
 export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { lang } = useLanguage();
   const [notifCount, setNotifCount] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -179,16 +184,17 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
     }
   }, [currentPage]);
 
-  const navigation = [
-    { name: 'Home',          icon: Home,           page: 'home',          current: currentPage === 'home' },
-    { name: 'Explore',       icon: Search,         page: 'explore',       current: currentPage === 'explore' },
-    { name: 'Notifications', icon: Bell,           page: 'notifications', current: currentPage === 'notifications', badge: true },
-    { name: 'Messages',      icon: Mail,           page: 'messages',      current: currentPage === 'messages' },
-    { name: 'Bookmarks',     icon: Bookmark,       page: 'bookmarks',     current: currentPage === 'bookmarks' },
-    { name: 'Profile',       icon: User,           page: 'profile',       current: currentPage === 'profile' },
-    { name: 'Subscribe',     icon: Star,           page: 'subscription',  current: currentPage === 'subscription' },
-    { name: 'More',          icon: MoreHorizontal, page: 'more',          current: currentPage === 'more' },
-  ];
+  // FIND and REPLACE the navigation array:
+const navigation = [
+  { name: t(lang, "home"),          icon: Home,           page: "home",         current: currentPage === "home" },
+  { name: t(lang, "explore"),       icon: Search,         page: "explore",      current: currentPage === "explore" },
+  { name: t(lang, "notifications"), icon: Bell,           page: "notifications",current: currentPage === "notifications", badge: true },
+  { name: t(lang, "messages"),      icon: Mail,           page: "messages",     current: currentPage === "messages" },
+  { name: t(lang, "bookmarks"),     icon: Bookmark,       page: "bookmarks",    current: currentPage === "bookmarks" },
+  { name: t(lang, "profile"),       icon: User,           page: "profile",      current: currentPage === "profile" },
+  { name: t(lang, "subscribe"),     icon: Star,           page: "subscription", current: currentPage === "subscription" },
+  { name: t(lang, "more"),          icon: MoreHorizontal, page: "more",         current: currentPage === "more" },
+];
 
   return (
     <div
@@ -235,7 +241,7 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
         {/* Post button */}
         <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
           <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
-            <Feather size={17} strokeWidth={2.5} /> Post
+           <Feather size={17} strokeWidth={2.5} /> {t(lang, "post")}
           </button>
         </div>
       </nav>

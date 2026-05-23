@@ -10,7 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import axios from "axios";
 import axiosInstance from "@/lib/axiosInstance";
 import AudioRecorder from "./AudioRecorder"; // ← NEW
-import { t } from "i18next";
+import { t } from "@/lib/i18n";
+import { useLanguage } from "@/context/LanguageContext";
 
 
 const COMPOSER_STYLES = `
@@ -176,6 +177,8 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
   const [showRecorder, setShowRecorder]   = useState(false);     // toggle panel
   // ─────────────────────────────────────────────────────────────────────────
 
+  const { lang } = useLanguage();
+
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -317,7 +320,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
               <textarea
                 ref={textareaRef}
                 className="tc-textarea"
-                placeholder={t("whatsHappening")}
+                placeholder={t(lang, "whatsHappening")}
                 value={content}
                 onChange={(e) => { setContent(e.target.value); setPostError(""); }}
                 rows={3}
@@ -482,7 +485,7 @@ const TweetComposer = ({ onTweetPosted }: { onTweetPosted: (tweet: any) => void 
                     className="tc-post-btn"
                     disabled={!content.trim() || isOverLimit || isBusy}
                   >
-                    {isSubmitting ? "Posting…" : "Post"}
+                    {isSubmitting ? t(lang, "loading") : t(lang, "post")}
                   </button>
                 </div>
               </div>

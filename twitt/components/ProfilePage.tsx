@@ -20,6 +20,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 const STYLE_ID = "profile-page-styles";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
@@ -162,6 +164,7 @@ const EmptyState = ({ title, subtitle }: { title: string; subtitle: string }) =>
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const { lang } = useLanguage();
   const [activeTab, setActiveTab] = useState("posts");
   const [showEditModal, setShowEditModal] = useState(false);
   const [bannerSrc, setBannerSrc] = useState<string | null>(null);
@@ -220,14 +223,13 @@ export default function ProfilePage() {
   };
   // ─────────────────────────────────────────────────────────────────────────
 
-  <NotificationToggle />
-  const TABS = [
-    { value: "posts",      label: "Posts" },
-    { value: "replies",    label: "Replies" },
-    { value: "highlights", label: "Highlights" },
-    { value: "articles",   label: "Articles" },
-    { value: "media",      label: "Media" },
-    { value: "security",   label: "Security" },
+    const TABS = [
+    { value: "posts",      label: t(lang, "posts")      },
+    { value: "replies",    label: t(lang, "replies")    },
+    { value: "highlights", label: t(lang, "highlights") },
+    { value: "articles",   label: t(lang, "articles")   },
+    { value: "media",      label: t(lang, "media")      },
+    { value: "security",   label: t(lang, "security")   },
   ];
 
   return (
@@ -295,7 +297,7 @@ export default function ProfilePage() {
                 onClick={() => setShowEditModal(true)}
               >
                 <Settings size={15} style={{ opacity: 0.7 }} />
-                Edit profile
+               {t(lang, "editProfile")} 
               </DropdownMenuItem>
 
               <DropdownMenuSeparator className="pp-dropdown-sep" />
@@ -305,7 +307,7 @@ export default function ProfilePage() {
                 onClick={logout}
               >
                 <LogOut size={15} />
-                Log out @{user.username}
+                {t(lang, "logout")} @{user.username}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -382,7 +384,7 @@ export default function ProfilePage() {
             }}
             onClick={() => setShowEditModal(true)}
           >
-            Edit profile
+            {t(lang, "editProfile")}
           </button>
         </div>
       </div>
@@ -410,7 +412,7 @@ export default function ProfilePage() {
           {[
             { icon: <MapPin size={14} />,    text: user.location || "Earth",       color: "rgba(255,255,255,0.45)" },
             { icon: <LinkIcon size={14} />,  text: user.website || "example.com",  color: "#1d9bf0", cls: "pp-meta-link" },
-            { icon: <Calendar size={14} />,  text: `Joined ${user.joinedDate ? new Date(user.joinedDate).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : ""}`, color: "rgba(255,255,255,0.45)" },
+            { icon: <Calendar size={14} />, text: `${t(lang, "joinedDate")} ${user.joinedDate ? new Date(user.joinedDate).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : ""}`, color: "rgba(255,255,255,0.45)" },
           ].map((m, i) => (
             <div key={i} className={m.cls} style={{ display: "flex", alignItems: "center", gap: 5, color: m.color, fontSize: 13 }}>
               <span style={{ opacity: 0.7 }}>{m.icon}</span>

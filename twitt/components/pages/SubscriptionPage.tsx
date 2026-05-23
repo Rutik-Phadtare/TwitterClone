@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Check, Zap, Star, Crown, AlertCircle, Clock, X, ChevronRight, Wifi } from "lucide-react";
 import axiosInstance from "@/lib/axiosInstance";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 declare global { interface Window { Razorpay: any; } }
 
@@ -209,6 +211,7 @@ function RazorpayDemoModal({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function SubscriptionPage() {
   const [current, setCurrent]       = useState<any>(null);
+  const { lang } = useLanguage();
   const [loading, setLoading]       = useState(true);
   const [paying, setPaying]         = useState<string | null>(null);
   const [timeError, setTimeError]   = useState("");
@@ -340,7 +343,7 @@ export default function SubscriptionPage() {
         borderBottom: "1px solid rgba(255,255,255,0.07)",
       }}>
         <h1 style={{ color: "#fff", fontSize: 20, fontWeight: 700, margin: 0 }}>
-          Premium Plans
+          {t(lang, "premiumPlans")}
         </h1>
       </div>
 

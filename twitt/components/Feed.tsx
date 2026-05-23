@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import TweetCard from "./TweetCard";
 import TweetComposer from "./TweetComposer";
+import TweetDetailPage from "./TweetDetailPage";
 import axiosInstance from "@/lib/axiosInstance";
 import { useLanguage } from "@/context/LanguageContext";
 import { t } from "@/lib/i18n";
@@ -14,8 +15,8 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
 
     @keyframes fadeSlideIn {
-      from { opacity: 0; transform: translateY(16px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes shimmer {
       0%   { background-position: -600px 0; }
@@ -30,7 +31,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       to   { transform: translateX(-50%) scaleX(1);   opacity: 1; }
     }
 
-    /* ── Feed items ── */
     .feed-tweet-item {
       animation: fadeSlideIn 0.35s cubic-bezier(0.22,1,0.36,1) both;
       border-bottom: 1px solid rgb(47,51,54);
@@ -38,7 +38,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     }
     .feed-tweet-item:hover { background: rgba(255,255,255,0.016); }
 
-    /* ── Skeleton ── */
     .feed-skeleton {
       background: linear-gradient(
         90deg,
@@ -51,18 +50,13 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       border-radius: 6px;
     }
 
-    /* ── Composer ── */
     .feed-composer-wrapper {
       animation: fadeSlideIn 0.35s 0.08s cubic-bezier(0.22,1,0.36,1) both;
       border-bottom: 1px solid rgb(47,51,54);
     }
 
-    /* ── FAB ── */
     .feed-fab { animation: pulseGlow 2.4s ease-in-out infinite; }
 
-    /* ══════════════════════════════════
-       TAB BAR — pixel-perfect X/Twitter
-    ══════════════════════════════════ */
     .x-tabs-list {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -98,7 +92,6 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       font-weight: 700;
     }
 
-    /* Blue pill underline */
     .x-tab-indicator {
       position: absolute;
       bottom: 0;
@@ -114,6 +107,13 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     .x-tab.active .x-tab-indicator {
       opacity: 1;
       animation: indicatorIn 0.22s cubic-bezier(0.34,1.2,0.64,1) forwards;
+    }
+
+    /* Disable slide-in animation for TweetDetailPage card */
+    .tdp-card-wrap .tc-card {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
     }
   `;
   document.head.appendChild(style);
@@ -146,31 +146,57 @@ const SkeletonTweet = ({ delay = 0 }: { delay?: number }) => (
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const Feed = () => {
-  const [tweets,    setTweets]    = useState<any[]>([]);
-  const [loading,   setloading]   = useState(false);
-  const [activeTab, setActiveTab] = useState<"foryou" | "following">("foryou");
+  const [tweets,        setTweets]        = useState<any[]>([]);
+  const [loading,       setLoading]       = useState(false);
+  const [activeTab,     setActiveTab]     = useState<"foryou" | "following">("foryou");
+  const [selectedTweet, setSelectedTweet] = useState<any | null>(null);
   const tweetsRef = useRef<HTMLDivElement>(null);
   const { lang } = useLanguage();
 
-  // ── unchanged logic ────────────────────────────────────────────────────────
   const fetchTweets = async () => {
     try {
-      setloading(true);
+      setLoading(true);
       const res = await axiosInstance.get("/post");
       setTweets(res.data.tweets ?? []);
     } catch (error) {
       console.error(error);
     } finally {
-      setloading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => { fetchTweets(); }, []);
 
-  const handlenewtweet = (newtweet: any) => {
-    setTweets((prev: any) => [newtweet, ...prev]);
+  const handleNewTweet = (newTweet: any) => {
+    setTweets((prev) => [newTweet, ...prev]);
   };
-  // ──────────────────────────────────────────────────────────────────────────
+
+  const handleTweetDeleted = (id: string) => {
+    setTweets(prev => prev.filter((tw) => tw._id !== id));
+  };
+
+  const handleTweetEdited = (updated: any) => {
+    setTweets(prev => prev.map((tw) => tw._id === updated._id ? updated : tw));
+  };
+
+  // ── Early return — render detail page when a tweet is selected ──────────────
+  if (selectedTweet) {
+    return (
+      <TweetDetailPage
+        tweet={selectedTweet}
+        onBack={() => setSelectedTweet(null)}
+        onDelete={(id) => {
+          handleTweetDeleted(id);
+          setSelectedTweet(null);
+        }}
+        onEdit={(updated) => {
+          handleTweetEdited(updated);
+          setSelectedTweet(updated);
+        }}
+      />
+    );
+  }
+  // ───────────────────────────────────────────────────────────────────────────
 
   return (
     <div style={{
@@ -180,9 +206,7 @@ const Feed = () => {
       paddingBottom: 80,
     }}>
 
-      {/* ══════════════════════════════════════════════════════
-          STICKY HEADER — tabs only, exactly like real X/Twitter
-      ══════════════════════════════════════════════════════ */}
+      {/* Sticky header — tabs */}
       <div style={{
         position: "sticky",
         top: 0,
@@ -210,12 +234,12 @@ const Feed = () => {
         </div>
       </div>
 
-      {/* ── Composer ── */}
+      {/* Composer */}
       <div className="feed-composer-wrapper">
-        <TweetComposer onTweetPosted={handlenewtweet} />
+        <TweetComposer onTweetPosted={handleNewTweet} />
       </div>
 
-      {/* ── Feed ── */}
+      {/* Feed */}
       <div ref={tweetsRef}>
         {loading ? (
           <>
@@ -241,7 +265,7 @@ const Feed = () => {
               ✦
             </div>
             <p style={{ color: "rgb(113,118,123)", fontSize: 15, margin: 0 }}>
-              Nothing here yet. Be the first to post.
+              {t(lang, "nothingYet")}
             </p>
           </div>
         ) : (
@@ -251,13 +275,21 @@ const Feed = () => {
               className="feed-tweet-item"
               style={{ animationDelay: `${Math.min(index * 0.04, 0.3)}s` }}
             >
-              <TweetCard tweet={tweet} />
+              <TweetCard
+                tweet={tweet}
+                onCardClick={(tw) => {
+                  // Only open detail if author is fully populated
+                  if (tw.author?.displayName) setSelectedTweet(tw);
+                }}
+                onDelete={handleTweetDeleted}
+                onEdit={handleTweetEdited}
+              />
             </div>
           ))
         )}
       </div>
 
-      {/* ── Scroll-to-top FAB ── */}
+      {/* Scroll-to-top FAB */}
       {tweets.length > 6 && (
         <button
           className="feed-fab"

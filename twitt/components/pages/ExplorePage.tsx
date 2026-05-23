@@ -3,12 +3,15 @@ import React, { useState, useEffect } from "react";
 import { Search } from "lucide-react";
 import axiosInstance from "@/lib/axiosInstance";
 import TweetCard from "../TweetCard";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
 
 export default function ExplorePage() {
-  const [query, setQuery] = useState("");
+  const { lang } = useLanguage();
+  const [query,     setQuery]     = useState("");
   const [allTweets, setAllTweets] = useState<any[]>([]);
-  const [results, setResults] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [results,   setResults]   = useState<any[]>([]);
+  const [loading,   setLoading]   = useState(true);
 
   useEffect(() => {
     axiosInstance.get("/post").then(res => {
@@ -21,16 +24,15 @@ export default function ExplorePage() {
   useEffect(() => {
     if (!query.trim()) { setResults(allTweets); return; }
     const q = query.toLowerCase();
-    setResults(allTweets.filter((t: any) =>
-      t.content?.toLowerCase().includes(q) ||
-      t.author?.displayName?.toLowerCase().includes(q) ||
-      t.author?.username?.toLowerCase().includes(q)
+    setResults(allTweets.filter((tw: any) =>
+      tw.content?.toLowerCase().includes(q) ||
+      tw.author?.displayName?.toLowerCase().includes(q) ||
+      tw.author?.username?.toLowerCase().includes(q)
     ));
   }, [query, allTweets]);
 
   return (
     <div style={{ minHeight: "100vh", background: "#000" }}>
-      {/* Sticky search bar */}
       <div style={{
         position: "sticky", top: 0, zIndex: 20,
         background: "rgba(0,0,0,0.85)", backdropFilter: "blur(18px)",
@@ -45,7 +47,7 @@ export default function ExplorePage() {
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search posts, people..."
+            placeholder={t(lang, "searchPosts")}
             style={{
               width: "100%", padding: "11px 16px 11px 42px",
               background: "rgba(255,255,255,0.07)",
@@ -60,14 +62,19 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      {/* Results */}
       <div>
         {loading ? (
-          <p style={{ color: "rgba(255,255,255,0.4)", textAlign: "center", padding: 40 }}>Loading...</p>
+          <p style={{ color: "rgba(255,255,255,0.4)", textAlign: "center", padding: 40 }}>
+            {t(lang, "loading")}
+          </p>
         ) : results.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 24px" }}>
-            <p style={{ color: "#fff", fontWeight: 700, fontSize: 20 }}>No results for "{query}"</p>
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>Try searching for something else.</p>
+            <p style={{ color: "#fff", fontWeight: 700, fontSize: 20 }}>
+              {t(lang, "noResultsFor")} "{query}"
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14 }}>
+              {t(lang, "trySearching")}
+            </p>
           </div>
         ) : (
           results.map((tweet: any) => <TweetCard key={tweet._id} tweet={tweet} />)
