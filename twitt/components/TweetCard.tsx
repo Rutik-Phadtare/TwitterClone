@@ -12,6 +12,7 @@ import { sendTweetNotification } from "@/lib/notificationUtils";
 import { timeAgo } from "@/lib/timeAgo";
 import { formatTweetContent } from "@/lib/formatTweetContent";
 import UserProfileModal from "./UserProfileModal";
+import { createPortal } from "react-dom";
 
 const STYLE_ID = "tweetcard-styles";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
@@ -232,14 +233,19 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     .tc-edit-save-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29,155,240,0.4); }
     .tc-edit-save-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
-    .tc-delete-confirm {
-      animation: tc-confirmIn 0.22s cubic-bezier(0.22,1,0.36,1) both;
-      position: absolute; inset: 0; z-index: 60; border-radius: 0;
-      background: rgba(0,0,0,0.88);
-      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px;
-      padding: 24px;
-    }
+    /* REPLACE this in your style block */
+.tc-delete-confirm {
+  animation: tc-confirmIn 0.22s cubic-bezier(0.22,1,0.36,1) both;
+  position: fixed;          /* ← was: absolute */
+  inset: 0;
+  z-index: 9999;            /* ← was: 60 */
+  border-radius: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 14px;
+  padding: 24px;
+}
     .tc-delete-confirm-box { text-align: center; max-width: 300px; }
     .tc-delete-icon-wrap {
       width: 48px; height: 48px; border-radius: 50%;
@@ -358,6 +364,7 @@ function fireRipple(el: HTMLElement) {
 const WAVE_PATTERN = [8,14,20,28,18,24,32,16,22,28,12,26,20,32,18,14,24,20,16,10,22,28,18,12];
 const fmtTime = (s: number) => `${Math.floor(s/60)}:${Math.round(s%60).toString().padStart(2,"0")}`;
 
+
 interface TweetCardProps {
   tweet: any;
   onDelete?: (tweetId: string) => void;
@@ -387,12 +394,14 @@ export default function TweetCard({ tweet, onDelete, onEdit, onCardClick, isDeta
   const audioElemRef                              = useRef<HTMLAudioElement | null>(null);
   const progressRafRef                            = useRef<number | null>(null);
   const cardRef                                   = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const [bookmarked, setBookmarked] = useState(() => {
     if (typeof window === "undefined") return false;
     const saved = JSON.parse(localStorage.getItem("bookmarks") || "[]");
     return saved.includes(tweet._id);
   });
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
 
   const isOwner = user?._id?.toString() === tweetstate.author?._id?.toString();
   const MAX = 280;
@@ -401,6 +410,13 @@ export default function TweetCard({ tweet, onDelete, onEdit, onCardClick, isDeta
     const t = setTimeout(() => setIsNew(false), 1500);
     return () => clearTimeout(t);
   }, []);
+  
+  useEffect(() => {
+  if (!showMenu) return;
+  const close = () => setShowMenu(false);
+  window.addEventListener("scroll", close, true); // true = capture phase catches all scroll
+  return () => window.removeEventListener("scroll", close, true);
+}, [showMenu]);
 
   useEffect(() => {
     if (editMode && editRef.current) {
@@ -545,46 +561,126 @@ export default function TweetCard({ tweet, onDelete, onEdit, onCardClick, isDeta
 }}
     >
       {/* Delete confirmation overlay */}
-      {showDeleteConfirm && (
-        <div className="tc-delete-confirm" onClick={e => e.stopPropagation()}>
-          <div className="tc-delete-confirm-box">
-            <div className="tc-delete-icon-wrap"><AlertTriangle size={22} color="#f4212e" /></div>
-            <h3 className="tc-delete-title">Delete this post?</h3>
-            <p className="tc-delete-sub">This can't be undone and will be removed for everyone.</p>
-            <div className="tc-delete-buttons">
-              <button className="tc-delete-cancel" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>Cancel</button>
-              <button className="tc-delete-confirm-btn" onClick={handleDeleteConfirmed} disabled={isDeleting}>
-                <Trash2 size={14} />{isDeleting ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+     {showDeleteConfirm && typeof document !== "undefined" && createPortal(
+  <div
+    onClick={e => { e.stopPropagation(); if (!isDeleting) setShowDeleteConfirm(false); }}
+    style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 99999,
+      background: "rgba(0,0,0,0.75)",
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      animation: "tc-confirmIn 0.22s cubic-bezier(0.22,1,0.36,1) both",
+    }}
+  >
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        background: "#16181c",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 20,
+        padding: "28px 32px",
+        textAlign: "center",
+        maxWidth: 320,
+        width: "90%",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.8)",
+      }}
+    >
+      <div className="tc-delete-icon-wrap">
+        <AlertTriangle size={22} color="#f4212e" />
+      </div>
+      <h3 className="tc-delete-title">Delete this post?</h3>
+      <p className="tc-delete-sub">
+        This can't be undone and will be removed for everyone.
+      </p>
+      <div className="tc-delete-buttons">
+        <button
+          className="tc-delete-cancel"
+          onClick={() => setShowDeleteConfirm(false)}
+          disabled={isDeleting}
+        >
+          Cancel
+        </button>
+        <button
+          className="tc-delete-confirm-btn"
+          onClick={handleDeleteConfirmed}
+          disabled={isDeleting}
+        >
+          <Trash2 size={14} />
+          {isDeleting ? "Deleting…" : "Delete"}
+        </button>
+      </div>
+    </div>
+  </div>,
+  document.body   // ← renders outside ALL parent stacking contexts
+)}
 
       {/* More menu */}
-      {showMenu && (
-        <div className="tc-more-menu" onClick={e => e.stopPropagation()}>
-          {isOwner ? (
-            <>
-              <button className="tc-more-menu-item" onClick={e => { e.stopPropagation(); setShowMenu(false); setEditContent(tweetstate.content); setEditMode(true); }}>
-                <Pencil size={14} style={{ opacity: 0.7 }} /> Edit post
-              </button>
-              <div className="tc-more-menu-sep" />
-              <button className="tc-more-menu-item tc-danger" onClick={e => { e.stopPropagation(); setShowMenu(false); setShowDeleteConfirm(true); }}>
-                <Trash2 size={14} /> Delete post
-              </button>
-              <div className="tc-more-menu-sep" />
-              {["Copy link", "Embed post"].map(item => (
-                <button key={item} className="tc-more-menu-item" onClick={e => { e.stopPropagation(); setShowMenu(false); }}>{item}</button>
-              ))}
-            </>
-          ) : (
-            ["Copy link", "Embed post", "Report post"].map(item => (
-              <button key={item} className="tc-more-menu-item" onClick={e => { e.stopPropagation(); setShowMenu(false); }}>{item}</button>
-            ))
-          )}
-        </div>
+      {showMenu && typeof document !== "undefined" && createPortal(
+  <>
+    {/* Invisible backdrop to close menu on outside click */}
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 99998 }}
+      onClick={e => { e.stopPropagation(); setShowMenu(false); }}
+    />
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        top: menuPos.top,
+        right: menuPos.right,
+        zIndex: 99999,
+        background: "#16181c",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 14,
+        padding: 6,
+        boxShadow: "0 12px 40px rgba(0,0,0,0.8)",
+        minWidth: 190,
+        animation: "tc-moreMenuPop 0.22s cubic-bezier(0.22,1,0.36,1) both",
+      }}
+    >
+      {isOwner ? (
+        <>
+          <button className="tc-more-menu-item" onClick={e => {
+            e.stopPropagation();
+            setShowMenu(false);
+            setEditContent(tweetstate.content);
+            setEditMode(true);
+          }}>
+            <Pencil size={14} style={{ opacity: 0.7 }} /> Edit post
+          </button>
+          <div className="tc-more-menu-sep" />
+          <button className="tc-more-menu-item tc-danger" onClick={e => {
+            e.stopPropagation();
+            setShowMenu(false);
+            setShowDeleteConfirm(true);
+          }}>
+            <Trash2 size={14} /> Delete post
+          </button>
+          <div className="tc-more-menu-sep" />
+          {["Copy link", "Embed post"].map(item => (
+            <button key={item} className="tc-more-menu-item"
+              onClick={e => { e.stopPropagation(); setShowMenu(false); }}>
+              {item}
+            </button>
+          ))}
+        </>
+      ) : (
+        ["Copy link", "Embed post", "Report post"].map(item => (
+          <button key={item} className="tc-more-menu-item"
+            onClick={e => { e.stopPropagation(); setShowMenu(false); }}>
+            {item}
+          </button>
+        ))
       )}
+    </div>
+  </>,
+  document.body
+)}
 
       <div style={{ display: "flex", gap: 12 }}>
 
@@ -636,9 +732,23 @@ export default function TweetCard({ tweet, onDelete, onEdit, onCardClick, isDeta
             <span className="tc-timestamp">{tweetstate.timestamp && timeAgo(tweetstate.timestamp)}</span>
             {tweetstate.edited && <span className="tc-edited-badge"><Pencil size={9} /> edited</span>}
 
-            <button className="tc-more-btn" onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }}>
-              <MoreHorizontal size={17} />
-            </button>
+            <button
+            ref={moreButtonRef}
+            className="tc-more-btn"
+            onClick={e => {
+              e.stopPropagation();
+              const rect = moreButtonRef.current?.getBoundingClientRect();
+              if (rect) {
+                setMenuPos({
+                  top: rect.bottom + 6,
+                  right: window.innerWidth - rect.right,
+                });
+              }
+              setShowMenu(v => !v);
+            }}
+          >
+            <MoreHorizontal size={17} />
+          </button>
           </div>
 
           {/* Content / Edit */}
