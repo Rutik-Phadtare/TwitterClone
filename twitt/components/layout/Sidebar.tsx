@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Home, Search, Bell, Mail, Bookmark, User,
-  MoreHorizontal, Settings, LogOut, Feather, Star,
+  MoreHorizontal, Settings, LogOut, Feather, Star, Globe,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -14,19 +14,18 @@ import TwitterLogo from '../Twitterlogo';
 import { useAuth } from '@/context/AuthContext';
 import { ALL_CATEGORIES, getSelectedCategories } from '@/lib/notificationUtils';
 import axiosInstance from '@/lib/axiosInstance';
-import LanguageSwitcher from "../LanguageSwitcher";
-
-// ADD these imports at the top of Sidebar.tsx:
+import { LanguageSwitcherModal } from "../LanguageSwitcher";
+import { createPortal } from "react-dom";
 import { useLanguage } from "@/context/LanguageContext";
 import { t } from "@/lib/i18n";
-// ── localStorage keys ─────────────────────────────────────────────────────────
-const LAST_READ_KEY  = "twiller-notif-last-read";   // when user last opened notifications
-const COUNT_KEY      = "twiller-notification-count"; // badge count
+import { LANGUAGES } from "@/lib/i18n";
 
-const getLastRead  = () => { try { return parseInt(localStorage.getItem(LAST_READ_KEY)  || "0", 10); } catch { return 0; } };
-const getSavedCount= () => { try { return parseInt(localStorage.getItem(COUNT_KEY)       || "0", 10); } catch { return 0; } };
+const LAST_READ_KEY  = "twiller-notif-last-read";
+const COUNT_KEY      = "twiller-notification-count";
 
-// ─── Inject styles once ───────────────────────────────────────────────────────
+const getLastRead   = () => { try { return parseInt(localStorage.getItem(LAST_READ_KEY) || "0", 10); } catch { return 0; } };
+const getSavedCount = () => { try { return parseInt(localStorage.getItem(COUNT_KEY)      || "0", 10); } catch { return 0; } };
+
 const STYLE_ID = 'sidebar-styles';
 if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   const s = document.createElement('style');
@@ -129,6 +128,16 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
       background:linear-gradient(to bottom,transparent 0%,rgba(255,255,255,0.07) 20%,rgba(255,255,255,0.07) 80%,transparent 100%);
     }
     .sb-nav-label { flex:1; }
+
+    /* ── Language trigger button ── */
+    .sb-lang-btn {
+      display:flex; align-items:center; gap:10px; width:100%;
+      padding:10px 12px; border-radius:12px; background:transparent; border:none;
+      color:rgba(255,255,255,0.7); cursor:pointer;
+      font-family:'DM Sans',sans-serif; font-size:15px; font-weight:500;
+      transition:background 0.15s;
+    }
+    .sb-lang-btn:hover { background:rgba(255,255,255,0.06); }
   `;
   document.head.appendChild(s);
 }
@@ -140,42 +149,37 @@ interface SidebarProps {
 
 export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { lang } = useLanguage();
-  const [notifCount, setNotifCount] = useState(0);
+  const { lang }         = useLanguage();
+  const [notifCount,   setNotifCount]   = useState(0);
+  const [langOpen,     setLangOpen]     = useState(false);  // ← controls language modal
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Count #hashtag tweets newer than last time user read notifications ────────
+  const selectedLangMeta = LANGUAGES.find(l => l.code === lang);
+
   const pollNotifications = async () => {
     try {
       const lastRead = getLastRead();
       const cats     = getSelectedCategories();
       const res      = await axiosInstance.get("/post");
       const tweets   = res.data.tweets ?? [];
-
       const count = tweets.filter((tweet: any) => {
         const content   = (tweet.content || "").toLowerCase();
         const tweetTime = new Date(tweet.timestamp).getTime();
         if (tweetTime <= lastRead) return false;
         return ALL_CATEGORIES.some(c => cats.includes(c.id) && content.includes(`#${c.id}`));
       }).length;
-
       setNotifCount(count);
       localStorage.setItem(COUNT_KEY, count.toString());
     } catch {}
   };
 
   useEffect(() => {
-    // Load saved count immediately (no flash)
     setNotifCount(getSavedCount());
-
-    // Then poll live
     pollNotifications();
-    pollRef.current = setInterval(pollNotifications, 60_000); // every 60s
-
+    pollRef.current = setInterval(pollNotifications, 60_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  // When user navigates TO notifications → clear badge and mark as read
   useEffect(() => {
     if (currentPage === "notifications") {
       setNotifCount(0);
@@ -184,110 +188,131 @@ export default function Sidebar({ currentPage = 'home', onNavigate }: SidebarPro
     }
   }, [currentPage]);
 
-  // FIND and REPLACE the navigation array:
-const navigation = [
-  { name: t(lang, "home"),          icon: Home,           page: "home",         current: currentPage === "home" },
-  { name: t(lang, "explore"),       icon: Search,         page: "explore",      current: currentPage === "explore" },
-  { name: t(lang, "notifications"), icon: Bell,           page: "notifications",current: currentPage === "notifications", badge: true },
-  { name: t(lang, "messages"),      icon: Mail,           page: "messages",     current: currentPage === "messages" },
-  { name: t(lang, "bookmarks"),     icon: Bookmark,       page: "bookmarks",    current: currentPage === "bookmarks" },
-  { name: t(lang, "profile"),       icon: User,           page: "profile",      current: currentPage === "profile" },
-  { name: t(lang, "subscribe"),     icon: Star,           page: "subscription", current: currentPage === "subscription" },
-  { name: t(lang, "more"),          icon: MoreHorizontal, page: "more",         current: currentPage === "more" },
-];
+  // Close lang modal on scroll
+  useEffect(() => {
+    if (!langOpen) return;
+    const close = () => setLangOpen(false);
+    window.addEventListener("scroll", close, true);
+    return () => window.removeEventListener("scroll", close, true);
+  }, [langOpen]);
+
+  const navigation = [
+    { name: t(lang, "home"),          icon: Home,           page: "home",          current: currentPage === "home" },
+    { name: t(lang, "explore"),       icon: Search,         page: "explore",       current: currentPage === "explore" },
+    { name: t(lang, "notifications"), icon: Bell,           page: "notifications", current: currentPage === "notifications", badge: true },
+    { name: t(lang, "messages"),      icon: Mail,           page: "messages",      current: currentPage === "messages" },
+    { name: t(lang, "bookmarks"),     icon: Bookmark,       page: "bookmarks",     current: currentPage === "bookmarks" },
+    { name: t(lang, "profile"),       icon: User,           page: "profile",       current: currentPage === "profile" },
+    { name: t(lang, "subscribe"),     icon: Star,           page: "subscription",  current: currentPage === "subscription" },
+    { name: t(lang, "more"),          icon: MoreHorizontal, page: "more",          current: currentPage === "more" },
+  ];
 
   return (
-    <div
-      className="sb-root"
-      style={{
-        display: 'flex', flexDirection: 'column',
-        position: 'sticky', top: 0,
-        height: '100vh', overflowY: 'auto',
-        width: 260, background: '#000', flexShrink: 0,
-      }}
-    >
-      <div className="sb-border-line" />
+    <>
+      <div
+        className="sb-root"
+        style={{
+          display: 'flex', flexDirection: 'column',
+          position: 'sticky', top: 0,
+          height: '100vh', overflowY: 'auto',
+          width: 260, background: '#000', flexShrink: 0,
+        }}
+      >
+        <div className="sb-border-line" />
 
-      {/* Logo */}
-      <div style={{ padding: '14px 16px 8px' }}>
-        <div className="sb-logo"><TwitterLogo size="lg" className="text-white" /></div>
+        {/* Logo */}
+        <div style={{ padding: '14px 16px 8px' }}>
+          <div className="sb-logo"><TwitterLogo size="lg" className="text-white" /></div>
+        </div>
+
+        {/* Navigation */}
+        <nav style={{ flex: 1, padding: '4px 10px' }}>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {navigation.map((item, idx) => (
+              <li key={item.name}>
+                <button
+                  className={`sb-nav-item${item.current ? ' active' : ''}`}
+                  style={{ animationDelay: `${0.05 + idx * 0.04}s` }}
+                  onClick={() => onNavigate?.(item.page)}
+                >
+                  <item.icon className="sb-nav-icon" size={22} strokeWidth={item.current ? 2.5 : 2} />
+                  <span className="sb-nav-label">{item.name}</span>
+                  {item.badge && notifCount > 0 && currentPage !== "notifications" && (
+                    <span className="sb-badge">{notifCount > 99 ? "99+" : notifCount}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* ── Language trigger button (inline in sidebar) ── */}
+          <div style={{ marginTop: 8, paddingRight: 12 }}>
+            <button
+              className="sb-lang-btn"
+              onClick={() => setLangOpen(true)}
+            >
+              <Globe size={20} />
+              <span>{selectedLangMeta?.flag} {selectedLangMeta?.nativeName}</span>
+            </button>
+          </div>
+
+          {/* Post button */}
+          <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
+            <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
+              <Feather size={17} strokeWidth={2.5} /> {t(lang, "post")}
+            </button>
+          </div>
+        </nav>
+
+        {/* User card */}
+        {user && (
+          <div style={{ padding: '10px 10px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="sb-user-card">
+                  <div className="sb-avatar-ring">
+                    <Avatar style={{ width: 40, height: 40 }}>
+                      <AvatarImage src={user.avatar} alt={user.displayName} />
+                      <AvatarFallback style={{ background: 'linear-gradient(135deg,#1d9bf0,#7950ff)', color: '#fff', fontWeight: 700, fontSize: 16 }}>
+                        {user.displayName[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 14, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {user.displayName}
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.42)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      @{user.username}
+                    </div>
+                  </div>
+                  <MoreHorizontal size={17} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent className="sb-dropdown-content" side="top" align="start" sideOffset={8}>
+                <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', marginBottom: 4 }}>
+                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{user.displayName}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>@{user.username}</div>
+                </div>
+                <DropdownMenuItem className="sb-dropdown-item">
+                  <Settings size={15} style={{ opacity: 0.7 }} /> Settings &amp; privacy
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="sb-dropdown-sep" />
+                <DropdownMenuItem className="sb-dropdown-item danger" onClick={logout}>
+                  <LogOut size={15} /> Log out @{user.username}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
 
-      {/* Navigation */}
-      <nav style={{ flex: 1, padding: '4px 10px' }}>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {navigation.map((item, idx) => (
-            <li key={item.name}>
-              <button
-                className={`sb-nav-item${item.current ? ' active' : ''}`}
-                style={{ animationDelay: `${0.05 + idx * 0.04}s` }}
-                onClick={() => onNavigate?.(item.page)}
-              >
-                <item.icon className="sb-nav-icon" size={22} strokeWidth={item.current ? 2.5 : 2} />
-                <span className="sb-nav-label">{item.name}</span>
-                {/* Badge — hidden when on notifications page */}
-                {item.badge && notifCount > 0 && currentPage !== "notifications" && (
-                  <span className="sb-badge">{notifCount > 99 ? "99+" : notifCount}</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <div style={{ marginTop: 8, paddingRight: 12 }}>
-          <LanguageSwitcher />
-        </div>
-
-        {/* Post button */}
-        <div style={{ marginTop: 18, marginBottom: 35, padding: '0 6px' }}>
-          <button className="sb-post-btn" onClick={() => onNavigate?.('home')}>
-           <Feather size={17} strokeWidth={2.5} /> {t(lang, "post")}
-          </button>
-        </div>
-      </nav>
-
-      {/* User card */}
-      {user && (
-        <div style={{ padding: '10px 10px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="sb-user-card">
-                <div className="sb-avatar-ring">
-                  <Avatar style={{ width: 40, height: 40 }}>
-                    <AvatarImage src={user.avatar} alt={user.displayName} />
-                    <AvatarFallback style={{ background: 'linear-gradient(135deg,#1d9bf0,#7950ff)', color: '#fff', fontWeight: 700, fontSize: 16 }}>
-                      {user.displayName[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: '#fff', fontWeight: 700, fontSize: 14, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {user.displayName}
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.42)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    @{user.username}
-                  </div>
-                </div>
-                <MoreHorizontal size={17} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
-              </button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent className="sb-dropdown-content" side="top" align="start" sideOffset={8}>
-              <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', marginBottom: 4 }}>
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{user.displayName}</div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>@{user.username}</div>
-              </div>
-              <DropdownMenuItem className="sb-dropdown-item">
-                <Settings size={15} style={{ opacity: 0.7 }} /> Settings &amp; privacy
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="sb-dropdown-sep" />
-              <DropdownMenuItem className="sb-dropdown-item danger" onClick={logout}>
-                <LogOut size={15} /> Log out @{user.username}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      {/* ── Language modal via portal → renders on document.body, outside sidebar ── */}
+      {langOpen && typeof document !== "undefined" && createPortal(
+        <LanguageSwitcherModal onClose={() => setLangOpen(false)} />,
+        document.body
       )}
-    </div>
+    </>
   );
 }
