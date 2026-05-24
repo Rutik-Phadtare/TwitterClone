@@ -1,6 +1,7 @@
 "use client";
 import { useAuth } from "@/context/AuthContext";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import LoadingSpinner from "../loading-spinner";
 import Sidebar from "./Sidebar";
 import RightSidebar from "./Rightsidebar";
@@ -11,26 +12,38 @@ import MessagesPage from "../pages/MessagesPage";
 import BookmarksPage from "../pages/BookmarksPage";
 import SubscriptionPage from "../pages/SubscriptionPage";
 import OtpVerificationModal from "../OtpVerificationModal";
-import { Home, Search, Bell, User, Star } from "lucide-react";
+import { LanguageSwitcherModal } from "../LanguageSwitcher";
+import { useLanguage } from "@/context/LanguageContext";
+import { t } from "@/lib/i18n";
+import { LANGUAGES } from "@/lib/i18n";
+import {
+  Home, Search, Bell, User, Star,
+  Mail, Bookmark, Globe, LogOut, Settings,
+  MoreHorizontal, X, ChevronRight,
+} from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
-const MOBILE_NAV = [
-  { page: "home",          icon: Home,   label: "Home" },
-  { page: "explore",       icon: Search, label: "Explore" },
-  { page: "notifications", icon: Bell,   label: "Alerts" },
-  { page: "profile",       icon: User,   label: "Profile" },
-  { page: "subscription",  icon: Star,   label: "Premium" },
-];
-
-const BOTTOM_NAV_STYLES = `
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const STYLES = `
   @keyframes bn-fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  @keyframes sheet-slideUp {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes sheet-fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* ── Bottom nav bar ── */
   .bn-root {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     height: 58px;
-    background: rgba(0,0,0,0.95);
+    background: rgba(0,0,0,0.97);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid rgba(255,255,255,0.08);
@@ -41,12 +54,8 @@ const BOTTOM_NAV_STYLES = `
     padding: 0 4px;
     animation: bn-fadeIn 0.3s ease both;
   }
-
-  /* ── Hide mobile nav on desktop ── */
   @media (min-width: 768px) {
-    .bn-root {
-      display: none !important;
-    }
+    .bn-root { display: none !important; }
   }
 
   .bn-btn {
@@ -64,6 +73,7 @@ const BOTTOM_NAV_STYLES = `
     transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
     min-width: 52px;
     flex: 1;
+    font-family: 'DM Sans', sans-serif;
   }
   .bn-btn:active { transform: scale(0.9); }
   .bn-btn.active { color: #1d9bf0; }
@@ -73,25 +83,236 @@ const BOTTOM_NAV_STYLES = `
     border-radius: 9999px;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.15s ease;
+    position: relative;
   }
   .bn-btn:not(.active):hover { color: rgba(255,255,255,0.75); }
   .bn-label {
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.2px;
-    font-family: 'DM Sans', sans-serif;
     line-height: 1;
   }
+  .bn-badge {
+    position: absolute;
+    top: -2px; right: -2px;
+    min-width: 16px; height: 16px;
+    background: #1d9bf0;
+    border-radius: 9999px;
+    border: 2px solid #000;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: #fff;
+    padding: 0 3px;
+  }
+
+  /* ── More bottom sheet ── */
+  .bs-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    animation: sheet-fadeIn 0.2s ease both;
+  }
+  .bs-sheet {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 501;
+    background: #0f0f0f;
+    border-radius: 20px 20px 0 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    animation: sheet-slideUp 0.3s cubic-bezier(0.22,1,0.36,1) both;
+    font-family: 'DM Sans', sans-serif;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .bs-handle {
+    width: 36px; height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 9999px;
+    margin: 12px auto 4px;
+  }
+  .bs-item {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 20px;
+    background: transparent; border: none;
+    color: rgba(255,255,255,0.9);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px; font-weight: 500;
+    cursor: pointer; width: 100%; text-align: left;
+    transition: background 0.15s ease;
+    border-radius: 0;
+  }
+  .bs-item:hover { background: rgba(255,255,255,0.05); }
+  .bs-item:active { background: rgba(255,255,255,0.08); }
+  .bs-item.active { color: #1d9bf0; font-weight: 700; }
+  .bs-item.active .bs-item-icon { color: #1d9bf0; }
+  .bs-item-icon { flex-shrink: 0; color: rgba(255,255,255,0.6); }
+  .bs-item-chevron { margin-left: auto; color: rgba(255,255,255,0.2); }
+  .bs-sep {
+    height: 1px;
+    background: rgba(255,255,255,0.07);
+    margin: 4px 0;
+  }
+  .bs-close {
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50%; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.6);
+    cursor: pointer; margin: 8px 20px 4px auto;
+    transition: background 0.15s;
+  }
+  .bs-close:hover { background: rgba(255,255,255,0.12); }
 `;
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+// ─── More bottom sheet ────────────────────────────────────────────────────────
+interface MoreSheetProps {
+  currentPage: string;
+  onNavigate:  (page: string) => void;
+  onClose:     () => void;
+  onLanguage:  () => void;
+  notifCount:  number;
+  user:        any;
+  logout:      () => void;
+  lang:        any;
+}
+
+function MoreSheet({ currentPage, onNavigate, onClose, onLanguage, notifCount, user, logout, lang }: MoreSheetProps) {
+  const navigate = (page: string) => { onNavigate(page); onClose(); };
+  const selectedLangMeta = LANGUAGES.find(l => l.code === lang);
+
+  const items = [
+    { icon: Mail,     label: t(lang, "messages"),      page: "messages" },
+    { icon: Bookmark, label: t(lang, "bookmarks"),     page: "bookmarks" },
+    { icon: Star,     label: t(lang, "subscribe"),     page: "subscription" },
+  ];
+
+  return createPortal(
+    <>
+      <div className="bs-overlay" onClick={onClose} />
+      <div className="bs-sheet">
+        <div className="bs-handle" />
+
+        {/* User info */}
+        {user && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            padding: "12px 20px 16px",
+            borderBottom: "1px solid rgba(255,255,255,0.07)",
+            marginBottom: 4,
+          }}>
+            <Avatar style={{ width: 44, height: 44, flexShrink: 0 }}>
+              <AvatarImage src={user.avatar} alt={user.displayName} />
+              <AvatarFallback style={{ background: "linear-gradient(135deg,#1d9bf0,#7950ff)", color: "#fff", fontWeight: 700 }}>
+                {user.displayName?.[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {user.displayName}
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
+                @{user.username}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Extra nav items */}
+        {items.map(item => (
+          <button
+            key={item.page}
+            className={`bs-item${currentPage === item.page ? " active" : ""}`}
+            onClick={() => navigate(item.page)}
+          >
+            <item.icon size={22} className="bs-item-icon" strokeWidth={currentPage === item.page ? 2.5 : 2} />
+            {item.label}
+            <ChevronRight size={16} className="bs-item-chevron" />
+          </button>
+        ))}
+
+        <div className="bs-sep" />
+
+        {/* Language switcher */}
+        <button className="bs-item" onClick={() => { onLanguage(); onClose(); }}>
+          <Globe size={22} className="bs-item-icon" strokeWidth={2} />
+          <span style={{ flex: 1 }}>
+            {t(lang, "language")}
+          </span>
+          <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginLeft: "auto", marginRight: 8 }}>
+            {selectedLangMeta?.flag} {selectedLangMeta?.nativeName}
+          </span>
+        </button>
+
+        <div className="bs-sep" />
+
+        {/* Settings */}
+        <button className="bs-item">
+          <Settings size={22} className="bs-item-icon" strokeWidth={2} />
+          Settings &amp; privacy
+          <ChevronRight size={16} className="bs-item-chevron" />
+        </button>
+
+        {/* Logout */}
+        {user && (
+          <button
+            className="bs-item"
+            style={{ color: "#f4212e" }}
+            onClick={() => { logout(); onClose(); }}
+          >
+            <LogOut size={22} style={{ color: "#f4212e", flexShrink: 0 }} strokeWidth={2} />
+            {t(lang, "logout")} @{user.username}
+          </button>
+        )}
+
+        {/* Close button */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 20px 8px" }}>
+          <button className="bs-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
+// ─── Mainlayout ───────────────────────────────────────────────────────────────
 interface MainlayoutProps {
   children: React.ReactNode;
 }
 
 const Mainlayout = ({ children }: MainlayoutProps) => {
   const { user, isLoading, showOtpModal, dismissOtpModal, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState("home");
+  const { lang } = useLanguage();
+  const [currentPage,   setCurrentPage]   = useState("home");
+  const [showMoreSheet, setShowMoreSheet] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false);
+  const [notifCount,    setNotifCount]    = useState(0);
+  const [mounted,       setMounted]       = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Read notification count from localStorage for mobile badge
+  useEffect(() => {
+    const update = () => {
+      try {
+        const c = parseInt(localStorage.getItem("twiller-notification-count") || "0", 10);
+        setNotifCount(c);
+      } catch {}
+    };
+    update();
+    window.addEventListener("storage", update);
+    return () => window.removeEventListener("storage", update);
+  }, []);
+
+  // Clear badge when user visits notifications
+  useEffect(() => {
+    if (currentPage === "notifications") {
+      setNotifCount(0);
+      localStorage.setItem("twiller-notification-count", "0");
+      localStorage.setItem("twiller-notif-last-read", Date.now().toString());
+    }
+  }, [currentPage]);
 
   if (isLoading) {
     return (
@@ -121,9 +342,21 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
     }
   };
 
+  // Pages accessible from the More sheet (not in primary mobile nav)
+  const morePages = ["messages", "bookmarks", "subscription"];
+  const isMorePage = morePages.includes(currentPage);
+
+  // Primary mobile nav — 4 main tabs + More button
+  const primaryNav = [
+    { page: "home",          icon: Home,          label: t(lang, "home") },
+    { page: "explore",       icon: Search,        label: t(lang, "explore") },
+    { page: "notifications", icon: Bell,          label: t(lang, "notifications"), badge: true },
+    { page: "profile",       icon: User,          label: t(lang, "profile") },
+  ];
+
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: BOTTOM_NAV_STYLES }} />
+      <style dangerouslySetInnerHTML={{ __html: STYLES }} />
 
       <div style={{
         minHeight: "100vh",
@@ -132,7 +365,7 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
         display: "flex",
         justifyContent: "center",
       }}>
-        {/* ── Desktop left sidebar ── */}
+        {/* Desktop left sidebar */}
         <div
           style={{
             flexShrink: 0,
@@ -146,7 +379,7 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
           <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
         </div>
 
-        {/* ── Main content ── */}
+        {/* Main content */}
         <main
           style={{
             flex: 1,
@@ -154,14 +387,13 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
             borderLeft:  "1px solid rgba(255,255,255,0.08)",
             borderRight: "1px solid rgba(255,255,255,0.08)",
             minHeight: "100vh",
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
           className="pb-16 md:pb-0"
         >
           {renderPage()}
         </main>
 
-        {/* ── Desktop right sidebar ── */}
+        {/* Desktop right sidebar */}
         <div
           style={{
             flexShrink: 0,
@@ -176,9 +408,9 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
         </div>
       </div>
 
-      {/* ── Mobile bottom nav (hidden on desktop) ── */}
+      {/* ── Mobile bottom nav ── */}
       <nav className="bn-root md:hidden">
-        {MOBILE_NAV.map(item => (
+        {primaryNav.map(item => (
           <button
             key={item.page}
             className={`bn-btn${currentPage === item.page ? " active" : ""}`}
@@ -186,11 +418,45 @@ const Mainlayout = ({ children }: MainlayoutProps) => {
           >
             <div className="bn-icon-wrap">
               <item.icon size={20} strokeWidth={currentPage === item.page ? 2.5 : 2} />
+              {item.badge && notifCount > 0 && currentPage !== "notifications" && (
+                <span className="bn-badge">{notifCount > 9 ? "9+" : notifCount}</span>
+              )}
             </div>
             <span className="bn-label">{item.label}</span>
           </button>
         ))}
+
+        {/* More button — highlights when a "more page" is active */}
+        <button
+          className={`bn-btn${isMorePage ? " active" : ""}`}
+          onClick={() => setShowMoreSheet(true)}
+        >
+          <div className="bn-icon-wrap">
+            <MoreHorizontal size={20} strokeWidth={isMorePage ? 2.5 : 2} />
+          </div>
+          <span className="bn-label">{t(lang, "more")}</span>
+        </button>
       </nav>
+
+      {/* ── More bottom sheet ── */}
+      {showMoreSheet && mounted && (
+        <MoreSheet
+          currentPage={currentPage}
+          onNavigate={setCurrentPage}
+          onClose={() => setShowMoreSheet(false)}
+          onLanguage={() => setShowLangModal(true)}
+          notifCount={notifCount}
+          user={user}
+          logout={logout}
+          lang={lang}
+        />
+      )}
+
+      {/* ── Language modal (triggered from More sheet) ── */}
+      {showLangModal && mounted && createPortal(
+        <LanguageSwitcherModal onClose={() => setShowLangModal(false)} />,
+        document.body
+      )}
 
       {/* ── OTP verification modal ── */}
       <OtpVerificationModal
