@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "./ui/button";
 import AuthModal from "./Authmodel";
 import TwitterLogo from "./Twitterlogo";
 import { useAuth } from "@/context/AuthContext";
 import Feed from "./Feed";
 
+// PERF FIX 1: Removed @import for Google Fonts — fonts now load from layout.tsx
+// PERF FIX 2: Style string moved OUTSIDE the component so it's created once,
+//             not on every render. This prevents needless GC pressure.
 const GLOBAL_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
-
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
@@ -25,7 +26,6 @@ const GLOBAL_STYLES = `
     --text-sub:     rgba(255,255,255,0.65);
   }
 
-  /* ── Animations ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(28px) scale(0.98); }
     to   { opacity: 1; transform: translateY(0)    scale(1);    }
@@ -54,10 +54,6 @@ const GLOBAL_STYLES = `
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-  @keyframes scanline {
-    0%   { transform: translateY(-100%); }
-    100% { transform: translateY(100vh); }
-  }
 
   .anim-0  { animation: fadeUp 0.6s cubic-bezier(.22,.68,0,1.15) 0.05s both; }
   .anim-1  { animation: fadeUp 0.6s cubic-bezier(.22,.68,0,1.15) 0.15s both; }
@@ -67,7 +63,6 @@ const GLOBAL_STYLES = `
   .anim-5  { animation: fadeUp 0.6s cubic-bezier(.22,.68,0,1.15) 0.55s both; }
   .anim-logo { animation: fadeIn 1s ease 0.1s both; }
 
-  /* ── Button base ── */
   .lp-btn {
     position: relative;
     overflow: hidden;
@@ -93,7 +88,6 @@ const GLOBAL_STYLES = `
   .lp-btn:hover  { transform: translateY(-1.5px); }
   .lp-btn:active { transform: translateY(0.5px); }
 
-  /* ── Social buttons (Google / Apple) ── */
   .lp-social {
     width: 100%;
     height: 50px;
@@ -118,7 +112,6 @@ const GLOBAL_STYLES = `
     box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
   }
 
-  /* ── Primary CTA ── */
   .lp-primary {
     width: 100%;
     height: 50px;
@@ -136,7 +129,6 @@ const GLOBAL_STYLES = `
     background: linear-gradient(135deg, #2aa8ff 0%, #1385e0 100%) !important;
   }
 
-  /* ── Login button ── */
   .lp-login {
     height: 42px;
     padding: 0 1.6rem;
@@ -157,7 +149,6 @@ const GLOBAL_STYLES = `
     box-shadow: 0 0 18px var(--brand-dim) !important;
   }
 
-  /* ── Divider ── */
   .lp-divider {
     display: flex;
     align-items: center;
@@ -177,7 +168,6 @@ const GLOBAL_STYLES = `
     background: linear-gradient(90deg, transparent, var(--border), transparent);
   }
 
-  /* ── Login card ── */
   .lp-login-card {
     display: flex;
     align-items: center;
@@ -191,7 +181,6 @@ const GLOBAL_STYLES = `
     -webkit-backdrop-filter: blur(12px);
   }
 
-  /* ── Left panel (logo side) ── */
   .lp-left-panel {
     display: none;
     align-items: center;
@@ -200,17 +189,13 @@ const GLOBAL_STYLES = `
     z-index: 1;
   }
 
-  /* ── Responsive ── */
   @media (min-width: 1024px) {
-    /* Left panel: takes all remaining space after right panel */
     .lp-left-panel {
       display: flex !important;
       flex: 1 1 0% !important;
       min-width: 0 !important;
     }
     .lp-mobile-logo { display: none !important; }
-
-    /* Right panel: fixed comfortable width, never overflows */
     .lp-right-panel {
       flex: 0 0 600px !important;
       width: 600px !important;
@@ -258,7 +243,6 @@ const GLOBAL_STYLES = `
     .lp-right-panel { padding: 1.5rem 1.1rem 2rem !important; }
   }
 
-  /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
@@ -293,7 +277,6 @@ export default function LandingPage() {
         {/* ── Background layer ── */}
         <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
 
-          {/* Grid pattern */}
           <div style={{
             position: "absolute",
             inset: 0,
@@ -307,7 +290,6 @@ export default function LandingPage() {
             WebkitMaskImage: "radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%)",
           }} />
 
-          {/* Top-left orb */}
           <div style={{
             position: "absolute",
             top: "-160px", left: "-100px",
@@ -317,7 +299,6 @@ export default function LandingPage() {
             animation: "floatOrb 9s ease-in-out infinite",
           }} />
 
-          {/* Bottom-right orb */}
           <div style={{
             position: "absolute",
             bottom: "-100px", right: "5%",
@@ -327,7 +308,6 @@ export default function LandingPage() {
             animation: "floatOrbSlow 13s ease-in-out infinite reverse",
           }} />
 
-          {/* Center subtle orb */}
           <div style={{
             position: "absolute",
             top: "40%", left: "50%",
@@ -338,7 +318,6 @@ export default function LandingPage() {
             pointerEvents: "none",
           }} />
 
-          {/* Noise texture */}
           <div style={{
             position: "absolute", inset: 0,
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E")`,
@@ -347,7 +326,6 @@ export default function LandingPage() {
             opacity: 0.7,
           }} />
 
-          {/* Bottom vignette */}
           <div style={{
             position: "absolute",
             bottom: 0, left: 0, right: 0,
@@ -356,11 +334,8 @@ export default function LandingPage() {
           }} />
         </div>
 
-        {/* ══════════════════════════════════════════
-            LEFT PANEL — Logo (desktop only)
-        ══════════════════════════════════════════ */}
+        {/* LEFT PANEL */}
         <div className="lp-left-panel anim-logo" style={{ position: "relative", zIndex: 1 }}>
-          {/* Subtle ring behind logo */}
           <div style={{
             position: "absolute",
             width: "360px", height: "360px",
@@ -379,9 +354,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* ══════════════════════════════════════════
-            RIGHT PANEL — Auth content
-        ══════════════════════════════════════════ */}
+        {/* RIGHT PANEL */}
         <div
           className="lp-right-panel"
           style={{
@@ -395,21 +368,15 @@ export default function LandingPage() {
         >
           <div className="lp-content-inner" style={{ display: "flex", flexDirection: "column", gap: "2.4rem" }}>
 
-            {/* ── Mobile logo ── */}
-            <div
-              className="lp-mobile-logo anim-0"
-              style={{ textAlign: "center", marginBottom: "0.5rem" }}
-            >
+            <div className="lp-mobile-logo anim-0" style={{ textAlign: "center", marginBottom: "0.5rem" }}>
               <div style={{ animation: "logoGlow 4s ease-in-out infinite", display: "inline-block" }}>
                 <TwitterLogo size="xl" className="text-white mx-auto" />
               </div>
             </div>
 
-            {/* ── Headline ── */}
             <div className="lp-headline anim-1">
               <h1 style={{
                 fontFamily: "'Syne', sans-serif",
-                /* Fits cleanly on one line within the 380px content area */
                 fontSize: "clamp(2.4rem, 5vw, 3rem)",
                 textAlign: "center",
                 fontWeight: 800,
@@ -426,7 +393,6 @@ export default function LandingPage() {
               </h1>
               <h1 style={{
                 fontFamily: "'Syne', sans-serif",
-                /* Fits cleanly on one line within the 380px content area */
                 fontSize: "clamp(2.4rem, 5vw, 3rem)",
                 textAlign: "center",
                 fontWeight: 800,
@@ -452,10 +418,7 @@ export default function LandingPage() {
               </h2>
             </div>
 
-            {/* ── Buttons ── */}
             <div className="anim-2" style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-
-              {/* Google */}
               <button className="lp-btn lp-social" onClick={() => googlesignin()}>
                 <svg style={{ width: 18, height: 18, flexShrink: 0 }} viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -466,7 +429,6 @@ export default function LandingPage() {
                 Sign up with Google
               </button>
 
-              {/* Apple */}
               <button className="lp-btn lp-social" onClick={() => googlesignin()}>
                 <svg style={{ width: 18, height: 18, flexShrink: 0 }} fill="currentColor" viewBox="0 0 24 24">
                   <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
@@ -474,15 +436,12 @@ export default function LandingPage() {
                 Sign up with Apple
               </button>
 
-              {/* Divider */}
               <div className="lp-divider anim-3">or</div>
 
-              {/* Create account */}
               <button className="lp-btn lp-primary anim-3" onClick={() => openAuthModal("signup")}>
                 Create account
               </button>
 
-              {/* Terms */}
               <p className="anim-4" style={{
                 fontSize: "0.70rem",
                 color: "rgba(255,255,255,0.32)",
@@ -491,26 +450,13 @@ export default function LandingPage() {
                 padding: "0 0.25rem",
               }}>
                 By signing up, you agree to the{" "}
-                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}
-                  onMouseOver={e => (e.currentTarget.style.textDecoration = "underline")}
-                  onMouseOut={e  => (e.currentTarget.style.textDecoration = "none")}>
-                  Terms of Service
-                </a>{" "}and{" "}
-                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}
-                  onMouseOver={e => (e.currentTarget.style.textDecoration = "underline")}
-                  onMouseOut={e  => (e.currentTarget.style.textDecoration = "none")}>
-                  Privacy Policy
-                </a>
+                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}>Terms of Service</a>{" "}and{" "}
+                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}>Privacy Policy</a>
                 , including{" "}
-                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}
-                  onMouseOver={e => (e.currentTarget.style.textDecoration = "underline")}
-                  onMouseOut={e  => (e.currentTarget.style.textDecoration = "none")}>
-                  Cookie Use
-                </a>.
+                <a href="#" style={{ color: "var(--brand)", textDecoration: "none" }}>Cookie Use</a>.
               </p>
             </div>
 
-            {/* ── Already have account ── */}
             <div className="anim-5">
               <div className="lp-login-card">
                 <p style={{
