@@ -117,7 +117,6 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.get("/", (req, res) => res.send("Twiller backend is running"));
 
-// KEY CHANGE: use httpServer.listen instead of app.listen
 mongoose.connect(process.env.MONGODB_URL)
   .then(() => {
     console.log("Connected to MongoDB");
@@ -238,7 +237,12 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
   } catch (e) { return res.status(500).json({ error: "Upload failed" }); }
 });
 
+// Task 4: Audio uploads restricted to 2:00 PM – 7:00 PM IST
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
+  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const hour = now.getHours();
+  if (hour < 14 || hour >= 19) return res.status(403).json({ error: "Audio uploads only allowed between 2:00 PM and 7:00 PM IST" });
+
   if (!req.file) return res.status(400).json({ error: "No audio file" });
   try {
     const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${Buffer.from(req.file.buffer).toString("base64")}`, { resource_type: "video", folder: "twiller-audio" });
@@ -299,6 +303,7 @@ app.post("/verify-sms-otp", verifyToken, async (req, res) => {
 });
 
 // LOGIN HISTORY
+// Task 3: Mobile login restricted to 10:00 AM – 1:00 PM IST
 app.post("/login-event", verifyToken, async (req, res) => {
   try {
     const ua = new UAParser(req.headers["user-agent"]);
@@ -308,6 +313,14 @@ app.post("/login-event", verifyToken, async (req, res) => {
     const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
     const bl = browser.toLowerCase();
     const isMicrosoft = bl.includes("edge") || bl.includes("msie") || bl.includes("trident");
+
+    if (deviceType === "mobile") {
+      const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+      const hour = now.getHours();
+      if (hour < 10 || hour >= 13)
+        return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
+    }
+
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ error: "User not found" });
     await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
@@ -474,7 +487,12 @@ app.get("/subscription", verifyToken, async (req, res) => {
   catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
+// Task 1: Payments restricted to 10:00 AM – 11:00 AM IST
 app.post("/create-order", verifyToken, async (req, res) => {
+  const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const hour = now.getHours();
+  if (hour < 10 || hour >= 11) return res.status(403).json({ error: "Payments only accepted between 10:00 AM and 11:00 AM IST" });
+
   try { const plan = PLANS[req.body.plan]; if (!plan) return res.status(400).json({ error: "Invalid plan" }); const order = await razorpay.orders.create({ amount: plan.price, currency: "INR", receipt: `receipt_${Date.now()}` }); return res.json({ orderId: order.id, amount: plan.price }); }
   catch (e) { return res.status(500).json({ error: e.message }); }
 });
