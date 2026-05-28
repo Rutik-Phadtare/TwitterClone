@@ -86,15 +86,12 @@ function RazorpayDemoModal({
         boxShadow: "0 32px 80px rgba(0,0,0,0.8)",
         fontFamily: "'DM Sans', sans-serif",
       }}>
-
-        {/* ── Red top bar ── */}
         <div style={{
           background: "linear-gradient(90deg, #c0392b, #e74c3c)",
           padding: "14px 18px",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {/* Razorpay logo-style text */}
             <div style={{
               width: 28, height: 28, borderRadius: 6,
               background: "rgba(255,255,255,0.2)",
@@ -113,10 +110,7 @@ function RazorpayDemoModal({
           }}>✕</button>
         </div>
 
-        {/* ── Body ── */}
         <div style={{ padding: "28px 24px 24px" }}>
-
-          {/* Icon */}
           <div style={{ textAlign: "center", marginBottom: 16 }}>
             <div style={{
               width: 56, height: 56, borderRadius: "50%",
@@ -127,35 +121,24 @@ function RazorpayDemoModal({
             }}>⚠️</div>
           </div>
 
-          {/* Title */}
-          <h2 style={{
-            color: "#fff", fontSize: 18, fontWeight: 800,
-            textAlign: "center", margin: "0 0 10px",
-          }}>
+          <h2 style={{ color: "#fff", fontSize: 18, fontWeight: 800, textAlign: "center", margin: "0 0 10px" }}>
             Razorpay Payment Restriction
           </h2>
 
-          {/* Description */}
-          <p style={{
-            color: "rgba(255,255,255,0.5)", fontSize: 14,
-            textAlign: "center", lineHeight: 1.6, margin: "0 0 10px",
-          }}>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, textAlign: "center", lineHeight: 1.6, margin: "0 0 10px" }}>
             Razorpay restricts live domains in test mode.
           </p>
 
-          {/* Info box */}
           <div style={{
             background: "rgba(29,155,240,0.08)",
             border: "1px solid rgba(29,155,240,0.2)",
-            borderRadius: 12, padding: "12px 16px",
-            marginBottom: 24,
+            borderRadius: 12, padding: "12px 16px", marginBottom: 24,
           }}>
             <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
               Your <strong style={{ color: "#1d9bf0" }}>₹{amountDisplay} · {planId}</strong> plan payment will be processed directly through our system — subscription activates instantly.
             </p>
           </div>
 
-          {/* Pay button */}
           <button
             onClick={onPay}
             disabled={processing}
@@ -186,7 +169,6 @@ function RazorpayDemoModal({
             ) : `Proceed with Demo Payment · ₹${amountDisplay}`}
           </button>
 
-          {/* Go back */}
           <button
             onClick={onClose}
             disabled={processing}
@@ -220,12 +202,10 @@ export default function SubscriptionPage() {
   const rzpScriptLoaded = useRef(false);
 
   useEffect(() => {
-    // Load subscription
     axiosInstance.get("/subscription")
       .then(res => setCurrent(res.data))
       .finally(() => setLoading(false));
 
-    // Preload Razorpay script immediately so it's ready when user clicks
     if (!document.getElementById("razorpay-script")) {
       const s   = document.createElement("script");
       s.id      = "razorpay-script";
@@ -236,13 +216,22 @@ export default function SubscriptionPage() {
       rzpScriptLoaded.current = true;
     }
 
-    // ── Speed fix: pre-warm Render backend (free tier cold starts) ──
-    // Ping a lightweight endpoint so it's awake before user clicks Pay
     axiosInstance.get("/").catch(() => {});
   }, []);
 
   const handleSubscribe = async (planId: string) => {
     if (planId === "free") return;
+
+    // ── Client-side IST time gate ─────────────────────────────────────────────
+    // Mirrors the backend restriction: payments only allowed 10:00 AM – 11:00 AM IST
+    const nowIST  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const hourIST = nowIST.getHours();
+    if (hourIST < 10 || hourIST >= 11) {
+      setTimeError("Payments only accepted between 10:00 AM and 11:00 AM IST");
+      return; // ← stop here; Razorpay gateway never opens
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     setPaying(planId);
     setTimeError("");
 
@@ -263,7 +252,6 @@ export default function SubscriptionPage() {
         order_id:    orderId,
 
         handler: async (response: any) => {
-          // Real payment succeeded (works on localhost) ✅
           paymentSucceeded = true;
           try {
             await axiosInstance.post("/verify-payment", {
@@ -282,7 +270,6 @@ export default function SubscriptionPage() {
 
         modal: {
           ondismiss: () => {
-            // Razorpay closed without success — show demo fallback on deployed
             if (!paymentSucceeded && isDemo) {
               setDemoModal({ open: true, planId, amount });
             }
@@ -300,7 +287,7 @@ export default function SubscriptionPage() {
       const status = err.response?.status;
       const msg    = err.response?.data?.error;
       if (status === 403) {
-        setTimeError(msg || "Payments only accepted 10AM–11AM IST");
+        setTimeError(msg || "Payments only accepted between 10:00 AM and 11:00 AM IST");
       } else if (status === 401) {
         setTimeError("Please log in again to make a payment.");
       } else {

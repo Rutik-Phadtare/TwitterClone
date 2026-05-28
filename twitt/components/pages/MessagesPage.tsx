@@ -56,10 +56,10 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
     }
 
     /* ── Chat area ── */
-    .mp-chat { flex:1; display:flex; flex-direction:column; height:100%; min-width:0; }
+    .mp-chat { flex:1; display:flex; flex-direction:column; height:100%; min-width:0; overflow:hidden; }
 
     .mp-messages {
-      flex:1; overflow-y:auto; padding:16px;
+      flex:1; min-height:0; overflow-y:auto; padding:16px;
       display:flex; flex-direction:column; gap:6px;
       scroll-behavior:smooth;
     }
@@ -106,6 +106,7 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
       padding:10px 14px;
       border-top:1px solid rgba(255,255,255,0.08);
       background:rgba(0,0,0,0.95);
+      flex-shrink:0;
     }
     .mp-textarea {
       flex:1; background:rgba(255,255,255,0.07);
@@ -769,7 +770,7 @@ export default function MessagesPage() {
             )}
 
             {/* Input bar */}
-            <div className="mp-input-bar">
+            <div className="mp-input-bar" style={{ flexShrink: 0 }}>
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
               <button className="mp-icon-btn" onClick={() => fileInputRef.current?.click()} disabled={uploadingImg} title="Send image">
                 {uploadingImg

@@ -328,7 +328,6 @@ export default function ProfilePage() {
             : "linear-gradient(135deg, #0f1923 0%, #1a2a3a 40%, #0d1b2a 70%, #162032 100%)",
             position: "relative", overflow: "hidden", cursor: "pointer",
           }}
-          onClick={() => bannerInputRef.current?.click()}
         >
           {!bannerSrc && (
             <div style={{
@@ -340,19 +339,6 @@ export default function ProfilePage() {
             position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: "#fff" }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: "50%",
-                background: "rgba(0,0,0,0.6)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: "1px solid rgba(255,255,255,0.25)",
-              }}>
-                <Camera size={20} />
-              </div>
-              <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.3px" }}>
-                {bannerSrc || user.banner ? "Change banner" : "Add banner"}
-              </span>
-            </div>
           </div>
         </div>
 

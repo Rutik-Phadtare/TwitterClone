@@ -727,7 +727,7 @@ export default function TweetCard({ tweet, onDelete, onEdit, onCardClick, isDeta
               </span>
             )}
 
-            <span className="tc-username">@{tweetstate.author?.username}</span>
+            <span className="tc-username">@{tweetstate.author?.username?.slice(0, 8)}...</span>
             <span className="tc-dot">·</span>
             <span className="tc-timestamp">{tweetstate.timestamp && timeAgo(tweetstate.timestamp)}</span>
             {tweetstate.edited && <span className="tc-edited-badge"><Pencil size={9} /> edited</span>}

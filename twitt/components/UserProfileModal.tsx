@@ -230,7 +230,7 @@ export default function UserProfileModal({ userId, onClose }: Props) {
                   {profile.displayName}
                 </h2>
                 <p style={{ color: "rgba(255,255,255,0.4)", margin: "0 0 10px", fontSize: 14 }}>
-                  @{profile.username}
+                  @{profile.username?.slice(0,8)}...
                 </p>
 
                 {profile.bio && (

@@ -394,7 +394,7 @@ useEffect(() => {
                     </span>
                   </div>
                   <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, display: 'block', marginTop: 1 }}>
-                    @{getHandle(user)}
+                    @{getHandle(user).slice(0, 6)}...com
                   </span>
                 </div>
 
