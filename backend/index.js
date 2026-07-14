@@ -59,7 +59,9 @@ const razorpay = new Razorpay({
 
 // ── Multer ────────────────────────────────────────────────────────────────────
 const upload      = multer();
+// RESTRICTION: audio file uploads capped at 100 MB
 const audioUpload = multer({ limits: { fileSize: 100 * 1024 * 1024 } });
+// RESTRICTION: chat message image uploads capped at 20 MB
 const msgUpload   = multer({ limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ── Plans & OTP stores ────────────────────────────────────────────────────────
@@ -75,6 +77,8 @@ const smsOtpStore = new Map();
 const app        = express();
 const httpServer = createServer(app);
 
+// RESTRICTION: Socket.io CORS — only requests from these origins (or any *.vercel.app
+// subdomain, or requests with no Origin header) are allowed to connect
 const allowedOrigins = [
   process.env.CLIENT_URL,
   "http://localhost:3000",
@@ -139,6 +143,9 @@ io.on("connection", (socket) => {
 const isUserOnline = (userId) => onlineUsers.has(userId?.toString());
 
 // ── CORS + body parser ────────────────────────────────────────────────────────
+// RESTRICTION: HTTP CORS — same allow-list as Socket.io above (env CLIENT_URL,
+// localhost:3000, the production Vercel URL, or any *.vercel.app subdomain);
+// requests with no Origin header are allowed through
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
@@ -148,6 +155,7 @@ app.use(cors({
   },
   credentials: true,
 }));
+// RESTRICTION: JSON request body capped at 10 MB
 app.use(express.json({ limit: "10mb" }));
 app.get("/", (req, res) => res.send("Twiller backend is running ✅"));
 
@@ -196,6 +204,8 @@ app.get("/loggedinuser", verifyToken, async (req, res) => {
 });
 
 app.patch("/userupdate/:email", verifyToken, async (req, res) => {
+  // RESTRICTION: a user can only update their own profile (email in the URL must
+  // match the authenticated user's email)
   if (req.user.email !== req.params.email)
     return res.status(403).send({ error: "Forbidden" });
   try {
@@ -216,7 +226,9 @@ app.patch("/userupdate/:email", verifyToken, async (req, res) => {
 app.post("/post", verifyToken, async (req, res) => {
   try {
     const content = (req.body.content || "").trim();
+    // RESTRICTION: tweet content cannot be empty
     if (!content)             return res.status(400).send({ error: "Tweet content cannot be empty" });
+    // RESTRICTION: tweet content capped at 280 characters
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
 
     const dbUser = await User.findOne({ email: req.user.email });
@@ -226,6 +238,8 @@ app.post("/post", verifyToken, async (req, res) => {
     const tweetLimit = sub?.tweetLimit ?? 1;
     const tweetsUsed = sub?.tweetsUsed ?? 0;
 
+    // RESTRICTION: monthly tweet posting limit enforced per subscription plan
+    // (-1 = unlimited; free/default users are capped at 1 tweet)
     if (tweetLimit !== -1 && tweetsUsed >= tweetLimit) {
       return res.status(403).send({
         error: `Tweet limit reached. You've used ${tweetsUsed}/${tweetLimit} tweets this month. Upgrade your plan to post more.`,
@@ -270,7 +284,9 @@ app.get("/post", async (req, res) => {
 app.patch("/post/:id", verifyToken, async (req, res) => {
   try {
     const content = (req.body.content || "").trim();
+    // RESTRICTION: tweet content cannot be empty
     if (!content)             return res.status(400).send({ error: "Content cannot be empty" });
+    // RESTRICTION: tweet content capped at 280 characters
     if (content.length > 280) return res.status(400).send({ error: "Tweet exceeds 280 characters" });
 
     const dbUser = await User.findOne({ email: req.user.email });
@@ -279,6 +295,7 @@ app.patch("/post/:id", verifyToken, async (req, res) => {
     const tweet = await Tweet.findById(req.params.id);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
 
+    // RESTRICTION: a user can only edit their own tweets
     if (tweet.author.toString() !== dbUser._id.toString())
       return res.status(403).send({ error: "Forbidden — you can only edit your own tweets" });
 
@@ -296,6 +313,7 @@ app.delete("/post/:id", verifyToken, async (req, res) => {
     const dbUser = await User.findOne({ email: req.user.email });
     const tweet  = await Tweet.findById(req.params.id);
     if (!tweet)  return res.status(404).send({ error: "Tweet not found" });
+    // RESTRICTION: a user can only delete their own tweets
     if (tweet.author.toString() !== dbUser._id.toString())
       return res.status(403).send({ error: "Forbidden" });
     await Tweet.findByIdAndDelete(req.params.id);
@@ -369,6 +387,8 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
 
 // ── TASK: Audio uploads restricted to 2:00 PM – 7:00 PM IST ──────────────────
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
+  // RESTRICTION: audio uploads only allowed 2:00 PM – 7:00 PM IST (server clock,
+  // converted to Asia/Kolkata time)
   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const hour = now.getHours();
   if (hour < 14 || hour >= 19)
@@ -382,6 +402,8 @@ app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, 
       resource_type: "video",
       folder:        "twiller-audio",
     });
+    // RESTRICTION: audio clips must be under 5 minutes (300s) — oversized
+    // uploads are deleted from Cloudinary and rejected
     if (result.duration > 300) {
       await cloudinary.uploader.destroy(result.public_id, { resource_type: "video" });
       return res.status(400).json({ error: "Audio must be under 5 minutes" });
@@ -410,10 +432,12 @@ app.post("/send-otp", verifyToken, async (req, res) => {
     console.log("📧 Sending OTP to:", req.user.email);
 
     const existing = otpStore.get(req.user.email);
+    // RESTRICTION: email OTP resend cooldown — 60 seconds between requests
     if (existing && existing.createdAt && (Date.now() - existing.createdAt) < 60_000)
       return res.json({ message: "OTP already sent — check your email" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // RESTRICTION: email OTP expires 10 minutes after being issued
     otpStore.set(req.user.email, { otp, expires: Date.now() + 10 * 60 * 1000, createdAt: Date.now() });
 
     await sendEmail({
@@ -437,6 +461,7 @@ app.post("/send-otp", verifyToken, async (req, res) => {
 
 app.post("/verify-otp", verifyToken, async (req, res) => {
   const record = otpStore.get(req.user.email);
+  // RESTRICTION: OTP must exist, match, and not be expired
   if (!record || record.otp !== req.body.otp || Date.now() > record.expires)
     return res.status(400).json({ error: "Invalid or expired OTP" });
   otpStore.delete(req.user.email);
@@ -449,10 +474,12 @@ app.post("/send-sms-otp", verifyToken, async (req, res) => {
     if (!phone) return res.status(400).json({ error: "Phone number required" });
 
     const existing = smsOtpStore.get(phone);
+    // RESTRICTION: SMS OTP resend cooldown — 60 seconds between requests
     if (existing && (Date.now() - existing.createdAt) < 60_000)
       return res.json({ message: "OTP already sent — check your SMS" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // RESTRICTION: SMS OTP expires 10 minutes after being issued
     smsOtpStore.set(phone, { otp, expires: Date.now() + 10 * 60 * 1000, createdAt: Date.now() });
 
     console.log(`📱 Sending SMS OTP to: ${phone}`);
@@ -477,6 +504,7 @@ app.post("/send-sms-otp", verifyToken, async (req, res) => {
 app.post("/verify-sms-otp", verifyToken, async (req, res) => {
   const { phone, otp } = req.body;
   const record = smsOtpStore.get(phone);
+  // RESTRICTION: OTP must exist, match, and not be expired
   if (!record || record.otp !== otp || Date.now() > record.expires)
     return res.status(400).json({ error: "Invalid or expired OTP" });
   smsOtpStore.delete(phone);
@@ -502,7 +530,8 @@ app.post("/login-event", verifyToken, async (req, res) => {
                          browserLower.includes("trident") ||
                          browserLower.includes("ie");
 
-    // ── Mobile login time restriction: 10:00 AM – 1:00 PM IST ───────────────
+    // RESTRICTION: mobile-device logins only allowed 10:00 AM – 1:00 PM IST
+    // (server clock, converted to Asia/Kolkata time)
     if (deviceType === "mobile") {
       const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
       const hour = now.getHours();
@@ -516,6 +545,8 @@ app.post("/login-event", verifyToken, async (req, res) => {
     await LoginLog.create({ userId: user._id, browser, os, device: deviceType, ip });
 
     const isChromium  = (browserLower.includes("chrome") || browserLower.includes("chromium")) && !isMicrosoft;
+    // RESTRICTION: Chromium-based, non-Microsoft browsers must complete OTP
+    // verification on login (requiresOtp flag returned to caller)
     const requiresOtp = isChromium;
 
     console.log(`🔐 login-event: browser=${browser} device=${deviceType} requiresOtp=${requiresOtp} isMicrosoft=${isMicrosoft}`);
@@ -526,6 +557,7 @@ app.post("/login-event", verifyToken, async (req, res) => {
 app.get("/login-history", verifyToken, async (req, res) => {
   try {
     const user = await User.findOne({ email: req.user.email });
+    // RESTRICTION: only the most recent 20 login log entries are returned
     const logs = await LoginLog.find({ userId: user._id }).sort({ timestamp: -1 }).limit(20);
     return res.json(logs);
   } catch (error) { return res.status(400).json({ error: error.message }); }
@@ -540,10 +572,12 @@ app.post("/follow/:userId", verifyToken, async (req, res) => {
     const me     = await User.findOne({ email: req.user.email });
     const target = await User.findById(req.params.userId);
     if (!me || !target) return res.status(404).json({ error: "User not found" });
+    // RESTRICTION: a user cannot follow themselves
     if (me._id.toString() === target._id.toString())
       return res.status(400).json({ error: "Cannot follow yourself" });
 
     const alreadyFollowing = me.following?.some(id => id.toString() === target._id.toString());
+    // RESTRICTION: cannot follow a user that is already followed
     if (alreadyFollowing) return res.status(400).json({ error: "Already following" });
 
     await User.findByIdAndUpdate(me._id,     { $addToSet: { following: target._id } });
@@ -580,6 +614,7 @@ app.get("/user/:userId", verifyToken, async (req, res) => {
 
 app.get("/user/:userId/tweets", verifyToken, async (req, res) => {
   try {
+    // RESTRICTION: only the most recent 20 tweets for a user are returned
     const tweets = await Tweet.find({ author: req.params.userId })
       .sort({ _id: -1 })
       .limit(20)
@@ -599,6 +634,7 @@ app.get("/users/search", verifyToken, async (req, res) => {
     if (!q || q.length < 1) return res.json([]);
     const me    = await User.findOne({ email: req.user.email });
     const regex = new RegExp(q, "i");
+    // RESTRICTION: user search results capped at 8 matches
     const users = await User.find({
       _id: { $ne: me._id },
       $or: [{ displayName: regex }, { username: regex }],
@@ -618,6 +654,7 @@ app.post("/conversations", verifyToken, async (req, res) => {
     const me            = await User.findOne({ email: req.user.email });
     const { participantId } = req.body;
     if (!participantId) return res.status(400).json({ error: "participantId required" });
+    // RESTRICTION: a user cannot start a conversation with themselves
     if (me._id.toString() === participantId)
       return res.status(400).json({ error: "Cannot message yourself" });
 
@@ -665,6 +702,7 @@ app.get("/conversations/:convId/messages", verifyToken, async (req, res) => {
     const me   = await User.findOne({ email: req.user.email });
     const conv = await Conversation.findById(req.params.convId);
     if (!conv) return res.status(404).json({ error: "Conversation not found" });
+    // RESTRICTION: only a conversation participant may read its messages
     if (!conv.participants.some(p => p.toString() === me._id.toString()))
       return res.status(403).json({ error: "Forbidden" });
 
@@ -672,6 +710,7 @@ app.get("/conversations/:convId/messages", verifyToken, async (req, res) => {
     const query = { conversationId: conv._id, deleted: false };
     if (before) query.createdAt = { $lt: new Date(before) };
 
+    // RESTRICTION: message page size capped at 40 per request (default)
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
       .limit(Number(limit))
@@ -695,10 +734,12 @@ app.post("/conversations/:convId/messages", verifyToken, async (req, res) => {
     const me   = await User.findOne({ email: req.user.email });
     const conv = await Conversation.findById(req.params.convId);
     if (!conv) return res.status(404).json({ error: "Conversation not found" });
+    // RESTRICTION: only a conversation participant may send messages to it
     if (!conv.participants.some(p => p.toString() === me._id.toString()))
       return res.status(403).json({ error: "Forbidden" });
 
     const { type = "text", content = "", mediaUrl = null } = req.body;
+    // RESTRICTION: text messages cannot be empty
     if (type === "text" && !content.trim()) return res.status(400).json({ error: "Empty message" });
 
     const msg       = await Message.create({ conversationId: conv._id, senderId: me._id, type, content: content.trim(), mediaUrl });
@@ -738,6 +779,7 @@ app.delete("/conversations/:convId/messages/:msgId", verifyToken, async (req, re
     const me  = await User.findOne({ email: req.user.email });
     const msg = await Message.findById(req.params.msgId);
     if (!msg) return res.status(404).json({ error: "Message not found" });
+    // RESTRICTION: a user can only delete their own messages
     if (msg.senderId.toString() !== me._id.toString())
       return res.status(403).json({ error: "Forbidden" });
 
@@ -763,7 +805,8 @@ app.get("/subscription", verifyToken, async (req, res) => {
 });
 
 app.post("/create-order", verifyToken, async (req, res) => {
-  // ── Payment time restriction: 10:00 AM – 11:00 AM IST ────────────────────
+  // RESTRICTION: payment order creation only allowed 10:00 AM – 11:00 AM IST
+  // (server clock, converted to Asia/Kolkata time)
   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const hour = now.getHours();
   if (hour < 10 || hour >= 11)
@@ -782,6 +825,7 @@ app.post("/create-order", verifyToken, async (req, res) => {
 });
 
 app.post("/demo-payment", verifyToken, async (req, res) => {
+  // RESTRICTION: demo payment endpoint only usable when DEMO_MODE env var is "true"
   if (process.env.DEMO_MODE !== "true")
     return res.status(403).json({ error: "Demo mode not enabled" });
   try {
@@ -829,6 +873,8 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
+    // RESTRICTION: Razorpay payment signature must match the computed HMAC,
+    // otherwise the payment is rejected as invalid
     if (expected !== razorpay_signature)
       return res.status(400).json({ error: "Invalid payment signature" });
 
@@ -870,6 +916,7 @@ app.post("/verify-payment", verifyToken, async (req, res) => {
 app.get("/suggested-users", verifyToken, async (req, res) => {
   try {
     const me    = await User.findOne({ email: req.user.email });
+    // RESTRICTION: suggested users list capped at 5 results
     const users = await User.find({ email: { $ne: req.user.email } })
       .select("displayName email avatar username followers following")
       .limit(5)
