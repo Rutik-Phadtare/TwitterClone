@@ -385,14 +385,7 @@ app.post("/upload-image", verifyToken, upload.single("image"), async (req, res) 
   } catch (error) { return res.status(500).json({ error: "Upload failed" }); }
 });
 
-// ── TASK: Audio upload time restriction (2:00 PM – 7:00 PM IST) — DISABLED below ──
 app.post("/upload-audio", verifyToken, audioUpload.single("audio"), async (req, res) => {
-  // RESTRICTION (disabled): audio uploads previously only allowed 2:00 PM – 7:00 PM IST
-  // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  // const hour = now.getHours();
-  // if (hour < 14 || hour >= 19)
-  //   return res.status(403).json({ error: "Audio uploads only allowed between 2:00 PM and 7:00 PM IST" });
-
   if (!req.file) return res.status(400).json({ error: "No audio file" });
   try {
     const b64     = Buffer.from(req.file.buffer).toString("base64");
@@ -512,7 +505,6 @@ app.post("/verify-sms-otp", verifyToken, async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOGIN HISTORY
-// ── TASK: Mobile login time restriction (10:00 AM – 1:00 PM IST) — DISABLED below ──
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post("/login-event", verifyToken, async (req, res) => {
@@ -528,14 +520,6 @@ app.post("/login-event", verifyToken, async (req, res) => {
                          browserLower.includes("msie")    ||
                          browserLower.includes("trident") ||
                          browserLower.includes("ie");
-
-    // RESTRICTION (disabled): mobile-device logins previously only allowed 10:00 AM – 1:00 PM IST
-    // if (deviceType === "mobile") {
-    //   const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    //   const hour = now.getHours();
-    //   if (hour < 10 || hour >= 13)
-    //     return res.status(403).json({ error: "Mobile login only allowed between 10:00 AM and 1:00 PM IST." });
-    // }
 
     const user = await User.findOne({ email: req.user.email });
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -791,7 +775,6 @@ app.delete("/conversations/:convId/messages/:msgId", verifyToken, async (req, re
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBSCRIPTION / PAYMENT ROUTES
-// ── TASK: Payment time restriction (10:00 AM – 11:00 AM IST) — DISABLED below ──
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get("/subscription", verifyToken, async (req, res) => {
@@ -803,12 +786,6 @@ app.get("/subscription", verifyToken, async (req, res) => {
 });
 
 app.post("/create-order", verifyToken, async (req, res) => {
-  // RESTRICTION (disabled): payment order creation previously only allowed 10:00 AM – 11:00 AM IST
-  // const now  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  // const hour = now.getHours();
-  // if (hour < 10 || hour >= 11)
-  //   return res.status(403).json({ error: "Payments only accepted between 10:00 AM and 11:00 AM IST" });
-
   try {
     const plan = PLANS[req.body.plan];
     if (!plan) return res.status(400).json({ error: "Invalid plan" });
