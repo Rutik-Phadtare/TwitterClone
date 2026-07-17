@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { Check, Zap, Star, Crown, AlertCircle, Clock, X, ChevronRight, Wifi } from "lucide-react";
+import { Check, Zap, Star, Crown, AlertCircle } from "lucide-react";
 import axiosInstance from "@/lib/axiosInstance";
 import { useLanguage } from "@/context/LanguageContext";
 import { t } from "@/lib/i18n";
@@ -222,16 +222,6 @@ export default function SubscriptionPage() {
   const handleSubscribe = async (planId: string) => {
     if (planId === "free") return;
 
-    // ── Client-side IST time gate ─────────────────────────────────────────────
-    // Mirrors the backend restriction: payments only allowed 10:00 AM – 11:00 AM IST
-    const nowIST  = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const hourIST = nowIST.getHours();
-    if (hourIST < 10 || hourIST >= 11) {
-      setTimeError("Payments only accepted between 10:00 AM and 11:00 AM IST");
-      return; // ← stop here; Razorpay gateway never opens
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
     setPaying(planId);
     setTimeError("");
 
@@ -286,9 +276,7 @@ export default function SubscriptionPage() {
     } catch (err: any) {
       const status = err.response?.status;
       const msg    = err.response?.data?.error;
-      if (status === 403) {
-        setTimeError(msg || "Payments only accepted between 10:00 AM and 11:00 AM IST");
-      } else if (status === 401) {
+      if (status === 401) {
         setTimeError("Please log in again to make a payment.");
       } else {
         setTimeError(msg || "Something went wrong. Please try again.");
@@ -388,15 +376,6 @@ export default function SubscriptionPage() {
             )}
           </div>
         )}
-
-        {/* ── Time restriction notice ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "10px 14px", marginBottom: 28 }}>
-          <Clock size={13} color="rgba(255,255,255,0.35)" />
-          <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: 0 }}>
-            Payments accepted only between&nbsp;
-            <strong style={{ color: "rgba(255,255,255,0.6)" }}>10:00 AM – 11:00 AM IST</strong>
-          </p>
-        </div>
 
         {/* ── Plan cards ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
